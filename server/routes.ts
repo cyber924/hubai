@@ -544,6 +544,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI 트렌드 리포트 CSV 다운로드
+  app.get("/api/stats/trend-report/download", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const products = await storage.getProducts(100, 0);
+      const report = await generateTrendReport(products);
+      
+      // CSV 헤더 생성
+      let csvContent = "구분,항목,값,기타\n";
+      
+      // 트렌딩 카테고리 섹션
+      csvContent += "\n=== 트렌딩 카테고리 ===\n";
+      csvContent += "순위,카테고리,상품수,성장률\n";
+      report.trendingCategories.forEach((cat, index) => {
+        csvContent += `${index + 1},"${cat.category}",${cat.count},${cat.growth}%\n`;
+      });
+      
+      // 시즌별 트렌드 섹션
+      csvContent += "\n=== 시즌별 트렌드 ===\n";
+      csvContent += "시즌,비율\n";
+      report.seasonalTrends.forEach((trend) => {
+        csvContent += `"${trend.season}",${trend.percentage}%\n`;
+      });
+      
+      // 가격 분석 섹션
+      csvContent += "\n=== 가격 분석 ===\n";
+      csvContent += "구분,금액\n";
+      csvContent += `"평균 가격","₩${Number(report.priceAnalysis.avgPrice).toLocaleString()}"\n`;
+      csvContent += `"최저 가격","₩${Number(report.priceAnalysis.priceRange.min).toLocaleString()}"\n`;
+      csvContent += `"최고 가격","₩${Number(report.priceAnalysis.priceRange.max).toLocaleString()}"\n`;
+      
+      // 추천 사항 섹션
+      csvContent += "\n=== AI 추천 사항 ===\n";
+      csvContent += "순위,추천 내용\n";
+      report.recommendations.forEach((rec, index) => {
+        csvContent += `${index + 1},"${rec}"\n`;
+      });
+      
+      // 보고서 생성 정보
+      const now = new Date();
+      csvContent += `\n=== 보고서 정보 ===\n`;
+      csvContent += `"생성 일시","${now.toLocaleString('ko-KR')}"\n`;
+      csvContent += `"분석 상품 수","${products.length}개"\n`;
+      
+      // CSV 파일로 응답
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="trend_report_${now.toISOString().split('T')[0]}.csv"`);
+      res.send('\ufeff' + csvContent); // BOM 추가로 한글 인코딩 문제 해결
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to download trend report: " + error.message });
+    }
+  });
+
   // Marketplace sync routes
   app.get("/api/marketplace-syncs", async (req, res) => {
     try {

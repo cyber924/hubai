@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import AdminSidebar from "@/components/admin-sidebar";
 import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 import { 
   BarChart3, 
   TrendingUp, 
@@ -16,6 +17,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 export default function AiReports() {
+  const { toast } = useToast();
+  
   const { data: trendReport, isLoading: reportLoading, refetch } = useQuery({
     queryKey: ['/api/stats/trend-report'],
     queryFn: api.getTrendReport,
@@ -30,6 +33,50 @@ export default function AiReports() {
     queryKey: ['/api/products', 'analyzed'],
     queryFn: () => api.getProducts({ status: 'analyzed', limit: 100 }),
   });
+
+  const handleDownloadReport = async () => {
+    try {
+      const response = await fetch('/api/stats/trend-report/download', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        // 파일 다운로드 처리
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // 오늘 날짜로 파일명 생성
+        const today = new Date().toISOString().split('T')[0];
+        link.download = `trend_report_${today}.csv`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        toast({
+          title: "성공",
+          description: "트렌드 리포트가 다운로드되었습니다.",
+        });
+      } else {
+        const result = await response.json();
+        toast({
+          title: "오류",
+          description: result.message || "리포트 다운로드에 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "오류",
+        description: "리포트 다운로드 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const getCategoryInsights = () => {
     if (!products) return [];
@@ -109,7 +156,11 @@ export default function AiReports() {
                   <RefreshCw className="mr-2 h-4 w-4" />
                   새로고침
                 </Button>
-                <Button className="korean-text" data-testid="button-export-report">
+                <Button 
+                  onClick={handleDownloadReport}
+                  className="korean-text" 
+                  data-testid="button-export-report"
+                >
                   <Download className="mr-2 h-4 w-4" />
                   리포트 다운로드
                 </Button>
