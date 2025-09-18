@@ -1,0 +1,431 @@
+// server/index.ts
+import express2 from "express";
+import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
+
+// server/routes.ts
+import { createServer } from "http";
+import Stripe from "stripe";
+import bcrypt from "bcryptjs";
+import multer from "multer";
+import csv from "csv-parser";
+import fs from "fs";
+
+// shared/schema.ts
+import { sql } from "drizzle-orm";
+import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+var users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionPlan: text("subscription_plan").default("free"),
+  isAdmin: boolean("is_admin").default(false),
+  createdAt: timestamp("created_at").defaultNow()
+});
+var products = pgTable("products", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  originalPrice: decimal("original_price", { precision: 10, scale: 2 }),
+  imageUrl: text("image_url"),
+  imageUrls: text("image_urls").array().default(sql`ARRAY[]::text[]`),
+  // Multiple images support
+  category: text("category"),
+  subcategory: text("subcategory"),
+  brand: text("brand"),
+  source: text("source").notNull(),
+  // naver, coupang, zigzag
+  sourceUrl: text("source_url"),
+  sourceProductId: text("source_product_id"),
+  status: text("status").default("pending"),
+  // pending, analyzed, registered, synced
+  aiAnalysis: jsonb("ai_analysis"),
+  // Gemini AI analysis results
+  tags: text("tags").array(),
+  season: text("season"),
+  gender: text("gender"),
+  ageGroup: text("age_group"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
+var marketplaceSyncs = pgTable("marketplace_syncs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  marketplace: text("marketplace").notNull(),
+  // naver, coupang, zigzag
+  marketplaceProductId: text("marketplace_product_id"),
+  status: text("status").default("pending"),
+  // pending, synced, failed
+  syncedAt: timestamp("synced_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow()
+});
+var scrapingJobs = pgTable("scraping_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  source: text("source").notNull(),
+  status: text("status").default("pending"),
+  // pending, running, completed, failed
+  productsFound: integer("products_found").default(0),
+  productsProcessed: integer("products_processed").default(0),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow()
+});
+var productOptions = pgTable("product_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  optionType: text("option_type").notNull(),
+  // size, color, material, etc.
+  optionValue: text("option_value").notNull(),
+  // S, M, L or red, blue, etc.
+  additionalPrice: decimal("additional_price", { precision: 10, scale: 2 }).default("0"),
+  stock: integer("stock").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
+var productInventory = pgTable("product_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  productOptionId: varchar("product_option_id").references(() => productOptions.id),
+  // nullable for simple products
+  currentStock: integer("current_stock").default(0),
+  reservedStock: integer("reserved_stock").default(0),
+  // for pending orders
+  lowStockThreshold: integer("low_stock_threshold").default(10),
+  lastRestocked: timestamp("last_restocked"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
+var insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+  subscriptionPlan: true,
+  isAdmin: true
+});
+var insertProductSchema = createInsertSchema(products).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  aiAnalysis: true,
+  status: true
+});
+var insertMarketplaceSyncSchema = createInsertSchema(marketplaceSyncs).omit({
+  id: true,
+  createdAt: true,
+  syncedAt: true
+});
+var insertScrapingJobSchema = createInsertSchema(scrapingJobs).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true
+});
+var insertProductOptionSchema = createInsertSchema(productOptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+var insertInventorySchema = createInsertSchema(productInventory).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+// server/storage.ts
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { eq, desc, sql as sql2 } from "drizzle-orm";
+var DatabaseStorage = class {
+  db;
+  constructor() {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is required for DatabaseStorage");
+    }
+    const sql3 = postgres(process.env.DATABASE_URL, {
+      ssl: "require"
+    });
+    this.db = drizzle(sql3);
+  }
+  // User operations
+  async getUser(id) {
+    const result = await this.db.select().from(users).where(eq(users.id, id));
+    return result[0];
+  }
+  async getUserByUsername(username) {
+    const result = await this.db.select().from(users).where(eq(users.username, username));
+    return result[0];
+  }
+  async getUserByEmail(email) {
+    const result = await this.db.select().from(users).where(eq(users.email, email));
+    return result[0];
+  }
+  async getUsers(limit = 50, offset = 0) {
+    return await this.db.select().from(users).orderBy(desc(users.createdAt)).limit(limit).offset(offset);
+  }
+  async createUser(insertUser) {
+    const result = await this.db.insert(users).values({
+      ...insertUser,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      subscriptionPlan: "free",
+      isAdmin: false
+    }).returning();
+    return result[0];
+  }
+  async updateUser(id, updates) {
+    const result = await this.db.update(users).set(updates).where(eq(users.id, id)).returning();
+    if (result.length === 0) throw new Error("User not found");
+    return result[0];
+  }
+  async updateUserStripeInfo(id, stripeCustomerId, stripeSubscriptionId) {
+    const result = await this.db.update(users).set({ stripeCustomerId, stripeSubscriptionId }).where(eq(users.id, id)).returning();
+    if (result.length === 0) throw new Error("User not found");
+    return result[0];
+  }
+  async updateStripeCustomerId(id, stripeCustomerId) {
+    const result = await this.db.update(users).set({ stripeCustomerId }).where(eq(users.id, id)).returning();
+    if (result.length === 0) throw new Error("User not found");
+    return result[0];
+  }
+  // Product operations
+  async getProducts(limit = 50, offset = 0) {
+    return await this.db.select().from(products).orderBy(desc(products.createdAt)).limit(limit).offset(offset);
+  }
+  async getProduct(id) {
+    const result = await this.db.select().from(products).where(eq(products.id, id));
+    return result[0];
+  }
+  async getProductsBySource(source) {
+    return await this.db.select().from(products).where(eq(products.source, source));
+  }
+  async getProductsByStatus(status) {
+    return await this.db.select().from(products).where(eq(products.status, status));
+  }
+  async createProduct(insertProduct) {
+    const result = await this.db.insert(products).values({
+      ...insertProduct,
+      description: insertProduct.description ?? null,
+      originalPrice: insertProduct.originalPrice ?? null,
+      imageUrl: insertProduct.imageUrl ?? null,
+      imageUrls: insertProduct.imageUrls ?? null,
+      category: insertProduct.category ?? null,
+      subcategory: insertProduct.subcategory ?? null,
+      brand: insertProduct.brand ?? null,
+      sourceUrl: insertProduct.sourceUrl ?? null,
+      sourceProductId: insertProduct.sourceProductId ?? null,
+      tags: insertProduct.tags ?? null,
+      season: insertProduct.season ?? null,
+      gender: insertProduct.gender ?? null,
+      ageGroup: insertProduct.ageGroup ?? null,
+      status: "pending",
+      aiAnalysis: null
+    }).returning();
+    return result[0];
+  }
+  async updateProduct(id, updates) {
+    const result = await this.db.update(products).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq(products.id, id)).returning();
+    if (result.length === 0) throw new Error("Product not found");
+    return result[0];
+  }
+  async updateProductAiAnalysis(id, analysis) {
+    const result = await this.db.update(products).set({
+      aiAnalysis: analysis,
+      status: "analyzed",
+      category: analysis.category || null,
+      tags: analysis.tags || null,
+      season: analysis.season || null,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq(products.id, id)).returning();
+    if (result.length === 0) throw new Error("Product not found");
+    return result[0];
+  }
+  async deleteProduct(id) {
+    await this.db.delete(products).where(eq(products.id, id));
+  }
+  // Marketplace sync operations
+  async getMarketplaceSyncs(productId) {
+    if (productId) {
+      return await this.db.select().from(marketplaceSyncs).where(eq(marketplaceSyncs.productId, productId));
+    }
+    return await this.db.select().from(marketplaceSyncs);
+  }
+  async createMarketplaceSync(insertSync) {
+    const result = await this.db.insert(marketplaceSyncs).values({
+      ...insertSync,
+      status: insertSync.status ?? null,
+      marketplaceProductId: null,
+      syncedAt: null,
+      errorMessage: null
+    }).returning();
+    return result[0];
+  }
+  async updateMarketplaceSync(id, updates) {
+    const result = await this.db.update(marketplaceSyncs).set(updates).where(eq(marketplaceSyncs.id, id)).returning();
+    if (result.length === 0) throw new Error("Marketplace sync not found");
+    return result[0];
+  }
+  // Scraping job operations
+  async getScrapingJobs(limit = 10) {
+    return await this.db.select().from(scrapingJobs).orderBy(desc(scrapingJobs.createdAt)).limit(limit);
+  }
+  async createScrapingJob(insertJob) {
+    const result = await this.db.insert(scrapingJobs).values({
+      ...insertJob,
+      status: insertJob.status ?? null,
+      productsFound: insertJob.productsFound ?? null,
+      productsProcessed: insertJob.productsProcessed ?? null,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null
+    }).returning();
+    return result[0];
+  }
+  async updateScrapingJob(id, updates) {
+    const result = await this.db.update(scrapingJobs).set(updates).where(eq(scrapingJobs.id, id)).returning();
+    if (result.length === 0) throw new Error("Scraping job not found");
+    return result[0];
+  }
+  async getProductStats() {
+    const [totalCount] = await this.db.select({ count: sql2`count(*)` }).from(products);
+    const [analyzedCount] = await this.db.select({ count: sql2`count(*)` }).from(products).where(sql2`status IN ('analyzed', 'registered')`);
+    const [registeredCount] = await this.db.select({ count: sql2`count(*)` }).from(products).where(eq(products.status, "registered"));
+    const [syncedCount] = await this.db.select({ count: sql2`count(*)` }).from(marketplaceSyncs).where(eq(marketplaceSyncs.status, "synced"));
+    return {
+      total: totalCount.count,
+      analyzed: analyzedCount.count,
+      registered: registeredCount.count,
+      synced: syncedCount.count
+    };
+  }
+  async getUserStats() {
+    const [totalCount] = await this.db.select({ count: sql2`count(*)` }).from(users);
+    const [premiumCount] = await this.db.select({ count: sql2`count(*)` }).from(users).where(sql2`subscription_plan IS NOT NULL AND subscription_plan != 'free'`);
+    const [freeCount] = await this.db.select({ count: sql2`count(*)` }).from(users).where(sql2`subscription_plan IS NULL OR subscription_plan = 'free'`);
+    const [adminCount] = await this.db.select({ count: sql2`count(*)` }).from(users).where(eq(users.isAdmin, true));
+    return {
+      total: totalCount.count,
+      premium: premiumCount.count,
+      free: freeCount.count,
+      admin: adminCount.count
+    };
+  }
+  // Product options operations
+  async getProductOptions(productId) {
+    return await this.db.select().from(productOptions).where(eq(productOptions.productId, productId));
+  }
+  async createProductOption(insertOption) {
+    const result = await this.db.insert(productOptions).values(insertOption).returning();
+    return result[0];
+  }
+  async updateProductOption(id, updates) {
+    const result = await this.db.update(productOptions).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq(productOptions.id, id)).returning();
+    if (result.length === 0) throw new Error("Product option not found");
+    return result[0];
+  }
+  async deleteProductOption(id) {
+    await this.db.delete(productOptions).where(eq(productOptions.id, id));
+  }
+  // Inventory operations
+  async getInventory(productId) {
+    if (productId) {
+      return await this.db.select().from(productInventory).where(eq(productInventory.productId, productId));
+    }
+    return await this.db.select().from(productInventory);
+  }
+  async getInventoryByProduct(productId) {
+    return await this.db.select().from(productInventory).where(eq(productInventory.productId, productId));
+  }
+  async createInventory(insertInventory) {
+    const result = await this.db.insert(productInventory).values(insertInventory).returning();
+    return result[0];
+  }
+  async updateInventory(id, updates) {
+    const result = await this.db.update(productInventory).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq(productInventory.id, id)).returning();
+    if (result.length === 0) throw new Error("Inventory not found");
+    return result[0];
+  }
+  async deleteInventory(id) {
+    await this.db.delete(productInventory).where(eq(productInventory.id, id));
+  }
+};
+var storage = new DatabaseStorage();
+
+// server/services/gemini.ts
+import { GoogleGenAI } from "@google/genai";
+var ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+async function analyzeProduct(product) {
+  try {
+    const systemPrompt = `\uB2F9\uC2E0\uC740 \uD328\uC158 \uC0C1\uD488 \uBD84\uC11D \uC804\uBB38\uAC00\uC785\uB2C8\uB2E4. 
+\uC8FC\uC5B4\uC9C4 \uC0C1\uD488 \uC815\uBCF4\uB97C \uBD84\uC11D\uD558\uC5EC \uB2E4\uC74C JSON \uD615\uC2DD\uC73C\uB85C \uC751\uB2F5\uD574\uC8FC\uC138\uC694:
+{
+  "category": "\uC0C1\uC704 \uCE74\uD14C\uACE0\uB9AC (\uC608: \uC0C1\uC758, \uD558\uC758, \uC544\uC6B0\uD130, \uC2E0\uBC1C, \uC561\uC138\uC11C\uB9AC)",
+  "subcategory": "\uC138\uBD80 \uCE74\uD14C\uACE0\uB9AC (\uC608: \uD2F0\uC154\uCE20, \uC154\uCE20, \uCCAD\uBC14\uC9C0, \uC2A4\uB2C8\uCEE4\uC988)",
+  "tags": ["\uD574\uC2DC\uD0DC\uADF81", "\uD574\uC2DC\uD0DC\uADF82", "\uD574\uC2DC\uD0DC\uADF83"],
+  "season": "\uC2DC\uC98C (\uBD04, \uC5EC\uB984, \uAC00\uC744, \uACA8\uC6B8, \uC0AC\uACC4\uC808)",
+  "gender": "\uC131\uBCC4 (\uB0A8\uC131, \uC5EC\uC131, \uACF5\uC6A9)",
+  "ageGroup": "\uC5F0\uB839\uB300 (10\uB300, 20\uB300, 30\uB300, 40\uB300, 50\uB300\uC774\uC0C1, \uC804\uC5F0\uB839)",
+  "recommendedPrice": \uCD94\uCC9C\uAC00\uACA9,
+  "confidence": 0.0-1.0,
+  "description": "\uC0C1\uD488 \uC124\uBA85",
+  "style": "\uC2A4\uD0C0\uC77C (\uCE90\uC8FC\uC5BC, \uC815\uC7A5, \uC2A4\uD3EC\uCE20, \uC2A4\uD2B8\uB9BF, \uBE48\uD2F0\uC9C0 \uB4F1)"
+}`;
+    const productInfo = `
+\uC0C1\uD488\uBA85: ${product.name}
+\uC124\uBA85: ${product.description || ""}
+\uD604\uC7AC \uAC00\uACA9: ${product.price}
+\uCD9C\uCC98: ${product.source}
+`;
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "object",
+          properties: {
+            category: { type: "string" },
+            subcategory: { type: "string" },
+            tags: { type: "array", items: { type: "string" } },
+            season: { type: "string" },
+            gender: { type: "string" },
+            ageGroup: { type: "string" },
+            recommendedPrice: { type: "number" },
+            confidence: { type: "number" },
+            description: { type: "string" },
+            style: { type: "string" }
+          },
+          required: ["category", "subcategory", "tags", "season", "gender", "ageGroup", "recommendedPrice", "confidence", "description", "style"]
+        }
+      },
+      contents: productInfo
+    });
+    const rawJson = response.text;
+    if (rawJson) {
+      const analysis = JSON.parse(rawJson);
+      return analysis;
+    } else {
+      throw new Error("Empty response from Gemini AI");
+    }
+  } catch (error) {
+    console.error("Failed to analyze product with Gemini AI:", error);
+    return {
+      category: "\uAE30\uD0C0",
+      subcategory: "\uBBF8\uBD84\uB958",
+      tags: ["\uC2E0\uC0C1\uD488"],
+      season: "\uC0AC\uACC4\uC808",
+      gender: "\uACF5\uC6A9",
+      ageGroup: "\uC804\uC5F0\uB839",
+      recommendedPrice: parseFloat(product.price) || 0,
+      confidence: 0.1,
+      description: product.description || product.name,
+      style: "\uCE90\uC8FC\uC5BC"
+    };
