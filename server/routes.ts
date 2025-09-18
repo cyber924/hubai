@@ -159,7 +159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.send({
         subscriptionId: subscription.id,
         clientSecret: typeof subscription.latest_invoice !== 'string' 
-          ? subscription.latest_invoice?.payment_intent?.client_secret 
+          ? (subscription.latest_invoice as any)?.payment_intent?.client_secret 
           : undefined,
       });
     } catch (error: any) {

@@ -17,7 +17,7 @@ export default function MyStore() {
     },
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<{total: number; analyzed: number; registered: number; synced: number}>({
     queryKey: ['/api/stats/products'],
   });
 

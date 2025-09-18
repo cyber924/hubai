@@ -8,11 +8,11 @@ import { RefreshCw, Download, ExternalLink, CheckCircle, Clock, AlertCircle } fr
 export default function MarketSync() {
   const [selectedMarketplace, setSelectedMarketplace] = useState<string>("all");
 
-  const { data: syncs, isLoading } = useQuery({
+  const { data: syncs, isLoading } = useQuery<any[]>({
     queryKey: ['/api/marketplace-syncs'],
   });
 
-  const { data: products } = useQuery({
+  const { data: products } = useQuery<any[]>({
     queryKey: ['/api/products', 'registered'],
     queryFn: async () => {
       const res = await fetch('/api/products?status=registered');
