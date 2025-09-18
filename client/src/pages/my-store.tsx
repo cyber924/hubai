@@ -4,10 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import ProductCard from "@/components/product-card";
+import ProductDetailModal from "@/components/ProductDetailModal";
 import { Store, Plus, Package, TrendingUp } from "lucide-react";
+import type { Product } from "@shared/schema";
 
 export default function MyStore() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['/api/products', 'registered'],
@@ -156,8 +160,8 @@ export default function MyStore() {
                 key={product.id} 
                 product={product}
                 onViewDetails={(product) => {
-                  // Handle product management
-                  console.log("Manage product:", product.name);
+                  setSelectedProduct(product);
+                  setIsDetailModalOpen(true);
                 }}
               />
             ))}
@@ -181,6 +185,26 @@ export default function MyStore() {
             </CardContent>
           </Card>
         )}
+
+        {/* Product Detail Modal */}
+        <ProductDetailModal
+          product={selectedProduct}
+          open={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+            setSelectedProduct(null);
+          }}
+          onEdit={(product) => {
+            // TODO: 상품 수정 기능 구현
+            console.log("Edit product:", product.name);
+            setIsDetailModalOpen(false);
+          }}
+          onDelete={(product) => {
+            // TODO: 상품 삭제 기능 구현
+            console.log("Delete product:", product.name);
+            setIsDetailModalOpen(false);
+          }}
+        />
       </div>
     </div>
   );
