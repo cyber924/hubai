@@ -15,7 +15,8 @@ import {
   CheckCircle,
   Upload,
   ShoppingCart,
-  Eye
+  Eye,
+  FileSpreadsheet
 } from "lucide-react";
 import type { Product } from "@shared/schema";
 
@@ -23,6 +24,8 @@ export default function ProductManagement() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -106,6 +109,75 @@ export default function ProductManagement() {
   const handleCloseDetailModal = () => {
     setIsDetailModalOpen(false);
     setSelectedProduct(null);
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'text/csv') {
+      setSelectedFile(file);
+    } else {
+      toast({
+        title: "오류",
+        description: "CSV 파일만 업로드 가능합니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCsvUpload = async () => {
+    if (!selectedFile) {
+      toast({
+        title: "오류", 
+        description: "파일을 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('csvFile', selectedFile);
+      
+      const response = await fetch('/api/products/upload-csv', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: "성공",
+          description: `${result.successCount}개 상품이 등록되었습니다. ${result.errorCount > 0 ? `${result.errorCount}개 오류` : ''}`,
+        });
+        
+        // Reset form
+        setSelectedFile(null);
+        const fileInput = document.getElementById('csv-file-input') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+        
+        // Refresh products list
+        queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+        refetch();
+      } else {
+        toast({
+          title: "오류",
+          description: result.message || "CSV 업로드에 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "오류",
+        description: "CSV 업로드 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -210,6 +282,64 @@ export default function ProductManagement() {
                   <RefreshCw className="mr-2 h-4 w-4" />
                   새로고침
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* CSV Upload Section */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="korean-text flex items-center">
+                <FileSpreadsheet className="mr-2 h-5 w-5" />
+                CSV 대량 등록
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground korean-text">
+                  CSV 파일로 상품을 대량 등록할 수 있습니다. 
+                  <br />
+                  필수 컬럼: name, price | 선택 컬럼: description, originalPrice, imageUrl, category, subcategory, brand, source, tags, season, gender, ageGroup
+                </p>
+                
+                <div className="flex items-center space-x-4">
+                  <input
+                    id="csv-file-input"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => document.getElementById('csv-file-input')?.click()}
+                    className="korean-text"
+                    data-testid="button-select-csv"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    파일 선택
+                  </Button>
+                  
+                  {selectedFile && (
+                    <span className="text-sm text-muted-foreground korean-text">
+                      선택된 파일: {selectedFile.name}
+                    </span>
+                  )}
+                  
+                  <Button
+                    onClick={handleCsvUpload}
+                    disabled={!selectedFile || isUploading}
+                    className="korean-text"
+                    data-testid="button-upload-csv"
+                  >
+                    {isUploading ? (
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    )}
+                    {isUploading ? '업로드 중...' : 'CSV 업로드'}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

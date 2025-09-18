@@ -2,10 +2,13 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import Stripe from "stripe";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+import csv from "csv-parser";
+import fs from "fs";
 import { storage } from "./storage";
 import { scrapeProducts, startScheduledScraping } from "./services/scraper";
 import { generateTrendReport } from "./services/gemini";
-import { insertUserSchema } from "@shared/schema";
+import { insertUserSchema, insertProductSchema } from "@shared/schema";
 import { z } from "zod";
 
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -47,6 +50,21 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
 const adminUserUpdateSchema = z.object({
   isAdmin: z.boolean().optional(),
   subscriptionPlan: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
+});
+
+// Multer setup for file uploads
+const upload = multer({ 
+  dest: '/tmp/uploads/',
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed'));
+    }
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  }
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -216,6 +234,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Product deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete product: " + error.message });
+    }
+  });
+
+  // CSV Upload route
+  app.post("/api/products/upload-csv", requireAuth, requireAdmin, upload.single('csvFile'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "CSV file is required" });
+      }
+
+      const results: any[] = [];
+      const errors: string[] = [];
+      let successCount = 0;
+
+      // Parse CSV file
+      fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', async () => {
+          try {
+            // Process each row
+            for (let index = 0; index < results.length; index++) {
+              const row = results[index];
+              try {
+                // Validate and transform row data
+                const productData = {
+                  name: row.name || `Product ${index + 1}`,
+                  description: row.description || '',
+                  price: row.price ? parseFloat(row.price.toString()) : 0,
+                  originalPrice: row.originalPrice ? parseFloat(row.originalPrice.toString()) : null,
+                  imageUrl: row.imageUrl || null,
+                  category: row.category || null,
+                  subcategory: row.subcategory || null,
+                  brand: row.brand || null,
+                  source: row.source || 'csv',
+                  sourceUrl: row.sourceUrl || null,
+                  sourceProductId: row.sourceProductId || null,
+                  tags: row.tags ? row.tags.split(',').map((tag: string) => tag.trim()) : [],
+                  season: row.season || null,
+                  gender: row.gender || null,
+                  ageGroup: row.ageGroup || null,
+                };
+
+                // Validate with schema
+                const validation = insertProductSchema.safeParse(productData);
+                if (!validation.success) {
+                  errors.push(`Row ${index + 1}: ${validation.error.message}`);
+                  continue;
+                }
+
+                // Create product
+                await storage.createProduct(validation.data);
+                successCount++;
+              } catch (error: any) {
+                errors.push(`Row ${index + 1}: ${error.message}`);
+              }
+            }
+
+            // Clean up uploaded file
+            fs.unlinkSync(req.file!.path);
+
+            res.json({
+              message: "CSV upload completed",
+              totalRows: results.length,
+              successCount,
+              errorCount: errors.length,
+              errors: errors.slice(0, 10) // Limit error list
+            });
+          } catch (error: any) {
+            fs.unlinkSync(req.file!.path);
+            res.status(500).json({ message: "Failed to process CSV: " + error.message });
+          }
+        })
+        .on('error', (error) => {
+          fs.unlinkSync(req.file!.path);
+          res.status(500).json({ message: "Failed to parse CSV: " + error.message });
+        });
+    } catch (error: any) {
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+      res.status(500).json({ message: "Failed to upload CSV: " + error.message });
     }
   });
 
