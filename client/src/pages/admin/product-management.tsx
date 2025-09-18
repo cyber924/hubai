@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AdminSidebar from "@/components/admin-sidebar";
+import ProductDetailModal from "@/components/ProductDetailModal";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -13,11 +14,15 @@ import {
   RefreshCw,
   CheckCircle,
   Upload,
-  ShoppingCart 
+  ShoppingCart,
+  Eye
 } from "lucide-react";
+import type { Product } from "@shared/schema";
 
 export default function ProductManagement() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -86,6 +91,21 @@ export default function ProductManagement() {
       marketplace,
       status: "pending"
     });
+  };
+
+  const handleViewProduct = (product: Product) => {
+    setSelectedProduct(product);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleEditProduct = (product: Product) => {
+    setSelectedProduct(product);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleCloseDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setSelectedProduct(null);
   };
 
   const getStatusBadge = (status: string) => {
@@ -291,6 +311,16 @@ export default function ProductManagement() {
                         <Button 
                           variant="ghost" 
                           size="sm"
+                          onClick={() => handleViewProduct(product)}
+                          data-testid={`button-view-${product.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleEditProduct(product)}
                           data-testid={`button-edit-${product.id}`}
                         >
                           <Edit className="h-4 w-4" />
@@ -312,6 +342,17 @@ export default function ProductManagement() {
           </Card>
         </div>
       </div>
+
+      {/* Product Detail Modal */}
+      <ProductDetailModal
+        product={selectedProduct}
+        open={isDetailModalOpen}
+        onClose={handleCloseDetailModal}
+        onEdit={(product) => {
+          // 수정 로직 구현 필요
+          console.log('Edit product:', product);
+        }}
+      />
     </div>
   );
 }
