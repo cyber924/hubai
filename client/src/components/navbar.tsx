@@ -1,12 +1,22 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
-import { Menu, X, Box } from "lucide-react";
+import { Menu, X, Box, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Navbar() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, isAuthenticated, logout } = useAuth();
 
   const navigation = [
     { name: "홈", href: "/" },
@@ -55,20 +65,56 @@ export default function Navbar() {
           
           {/* CTA Buttons */}
           <div className="flex items-center space-x-3">
-            <Link href="/login">
-              <Button
-                variant="ghost"
-                className="hidden sm:inline-flex korean-text"
-                data-testid="button-login"
-              >
-                로그인
-              </Button>
-            </Link>
-            <Link href="/subscribe">
-              <Button className="korean-text" data-testid="button-free-trial">
-                무료 체험 시작
-              </Button>
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="flex items-center space-x-2 korean-text"
+                      data-testid="button-user-menu"
+                    >
+                      <User className="h-4 w-4" />
+                      <span className="hidden sm:inline">{user?.username}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel className="korean-text">내 계정</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      onClick={logout}
+                      className="korean-text cursor-pointer"
+                      data-testid="button-logout"
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      로그아웃
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Link href="/subscribe">
+                  <Button className="korean-text" data-testid="button-free-trial">
+                    프리미엄 업그레이드
+                  </Button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/login">
+                  <Button
+                    variant="ghost"
+                    className="hidden sm:inline-flex korean-text"
+                    data-testid="button-login"
+                  >
+                    로그인
+                  </Button>
+                </Link>
+                <Link href="/register">
+                  <Button className="korean-text" data-testid="button-free-trial">
+                    무료 체험 시작
+                  </Button>
+                </Link>
+              </>
+            )}
             
             {/* Mobile Menu */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
