@@ -7,7 +7,8 @@ import {
   Settings,
   Home,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,6 +28,12 @@ export default function AdminSidebar({ className }: AdminSidebarProps) {
       href: "/admin", 
       icon: LayoutDashboard,
       exact: true
+    },
+    { 
+      name: "사용자 관리", 
+      href: "/admin/users", 
+      icon: Users,
+      exact: false
     },
     { 
       name: "상품 피드", 

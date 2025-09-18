@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import Stripe from "stripe";
 import bcrypt from "bcryptjs";
@@ -6,12 +6,47 @@ import { storage } from "./storage";
 import { scrapeProducts, startScheduledScraping } from "./services/scraper";
 import { generateTrendReport } from "./services/gemini";
 import { insertUserSchema } from "@shared/schema";
+import { z } from "zod";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
 }
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2025-08-27.basil",
+});
+
+// Authentication middleware
+const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionUserId = (req as any).session?.userId;
+    if (!sessionUserId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    
+    const user = await storage.getUser(sessionUserId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    
+    (req as any).user = user;
+    next();
+  } catch (error) {
+    res.status(500).json({ message: "Authentication error" });
+  }
+};
+
+const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  const user = (req as any).user;
+  if (!user?.isAdmin) {
+    return res.status(403).json({ message: "Admin privileges required" });
+  }
+  next();
+};
+
+// Validation schemas
+const adminUserUpdateSchema = z.object({
+  isAdmin: z.boolean().optional(),
+  subscriptionPlan: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -165,7 +200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/products/:id", async (req, res) => {
+  app.put("/api/products/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       const updates = req.body;
       const product = await storage.updateProduct(req.params.id, updates);
@@ -175,7 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/products/:id", async (req, res) => {
+  app.delete("/api/products/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       await storage.deleteProduct(req.params.id);
       res.json({ message: "Product deleted successfully" });
@@ -185,7 +220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Scraping routes
-  app.post("/api/scraping/start", async (req, res) => {
+  app.post("/api/scraping/start", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { source } = req.body;
       
@@ -214,12 +249,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Statistics routes
-  app.get("/api/stats/products", async (req, res) => {
+  app.get("/api/stats/products", requireAuth, requireAdmin, async (req, res) => {
     try {
       const stats = await storage.getProductStats();
       res.json(stats);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to fetch product stats: " + error.message });
+    }
+  });
+
+  app.get("/api/stats/users", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getUserStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch user stats: " + error.message });
+    }
+  });
+
+  // Admin user routes
+  app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      const users = await storage.getUsers(limit, offset);
+      
+      // Remove passwords from response
+      const safeUsers = users.map(({ password, ...user }) => user);
+      res.json(safeUsers);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch users: " + error.message });
+    }
+  });
+
+  app.patch("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Validate and whitelist allowed updates
+      const validation = adminUserUpdateSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid update data", 
+          errors: validation.error.flatten().fieldErrors 
+        });
+      }
+      
+      const user = await storage.updateUser(id, validation.data);
+      
+      // Remove password from response
+      const { password: _, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error: any) {
+      if (error.message === "User not found") {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.status(500).json({ message: "Failed to update user: " + error.message });
     }
   });
 

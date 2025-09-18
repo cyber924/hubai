@@ -9,7 +9,9 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUsers(limit?: number, offset?: number): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User>;
   updateUserStripeInfo(id: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User>;
   updateStripeCustomerId(id: string, stripeCustomerId: string): Promise<User>;
 
@@ -40,6 +42,12 @@ export interface IStorage {
     registered: number;
     synced: number;
   }>;
+  getUserStats(): Promise<{
+    total: number;
+    premium: number;
+    free: number;
+    admin: number;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -67,6 +75,15 @@ export class MemStorage implements IStorage {
     return Array.from(this.users.values()).find(user => user.email === email);
   }
 
+  async getUsers(limit = 50, offset = 0): Promise<User[]> {
+    const users = Array.from(this.users.values()).sort((a, b) => {
+      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bDate - aDate;
+    });
+    return users.slice(offset, offset + limit);
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const user: User = { 
@@ -80,6 +97,15 @@ export class MemStorage implements IStorage {
     };
     this.users.set(id, user);
     return user;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    const user = this.users.get(id);
+    if (!user) throw new Error("User not found");
+    
+    const updatedUser = { ...user, ...updates };
+    this.users.set(id, updatedUser);
+    return updatedUser;
   }
 
   async updateUserStripeInfo(id: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User> {
@@ -247,6 +273,17 @@ export class MemStorage implements IStorage {
       synced: syncs.filter(s => s.status === "synced").length
     };
   }
+
+  async getUserStats(): Promise<{ total: number; premium: number; free: number; admin: number; }> {
+    const users = Array.from(this.users.values());
+    
+    return {
+      total: users.length,
+      premium: users.filter(u => u.subscriptionPlan && u.subscriptionPlan !== "free").length,
+      free: users.filter(u => !u.subscriptionPlan || u.subscriptionPlan === "free").length,
+      admin: users.filter(u => u.isAdmin).length
+    };
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -278,6 +315,10 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getUsers(limit = 50, offset = 0): Promise<User[]> {
+    return await this.db.select().from(users).orderBy(desc(users.createdAt)).limit(limit).offset(offset);
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const result = await this.db.insert(users).values({
       ...insertUser,
@@ -286,6 +327,15 @@ export class DatabaseStorage implements IStorage {
       subscriptionPlan: "free",
       isAdmin: false
     }).returning();
+    return result[0];
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    const result = await this.db.update(users)
+      .set(updates)
+      .where(eq(users.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("User not found");
     return result[0];
   }
 
@@ -441,6 +491,20 @@ export class DatabaseStorage implements IStorage {
       analyzed: analyzedCount.count,
       registered: registeredCount.count,
       synced: syncedCount.count
+    };
+  }
+
+  async getUserStats(): Promise<{ total: number; premium: number; free: number; admin: number; }> {
+    const [totalCount] = await this.db.select({ count: sql<number>`count(*)` }).from(users);
+    const [premiumCount] = await this.db.select({ count: sql<number>`count(*)` }).from(users).where(sql`subscription_plan IS NOT NULL AND subscription_plan != 'free'`);
+    const [freeCount] = await this.db.select({ count: sql<number>`count(*)` }).from(users).where(sql`subscription_plan IS NULL OR subscription_plan = 'free'`);
+    const [adminCount] = await this.db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.isAdmin, true));
+
+    return {
+      total: totalCount.count,
+      premium: premiumCount.count,
+      free: freeCount.count,
+      admin: adminCount.count
     };
   }
 }

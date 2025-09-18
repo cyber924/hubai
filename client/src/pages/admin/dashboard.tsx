@@ -11,7 +11,10 @@ import {
   TrendingUp,
   Play,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Users,
+  Crown,
+  Shield
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -19,6 +22,11 @@ export default function AdminDashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['/api/stats/products'],
     queryFn: api.getProductStats,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  const { data: userStats, isLoading: userStatsLoading } = useQuery<{total: number; premium: number; free: number; admin: number}>({
+    queryKey: ['/api/stats/users'],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
@@ -83,7 +91,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6 mb-8">
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -141,6 +149,52 @@ export default function AdminDashboard() {
                   {statsLoading ? "..." : stats?.synced || 0}
                 </div>
                 <div className="text-sm text-muted-foreground korean-text">마켓 동기화</div>
+              </CardContent>
+            </Card>
+
+            {/* User Stats Cards */}
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                    <Users className="text-blue-500 h-6 w-6" />
+                  </div>
+                  <TrendingUp className="h-4 w-4 text-secondary" />
+                </div>
+                <div className="text-2xl font-bold mb-1 english-text" data-testid="text-total-users">
+                  {userStatsLoading ? "..." : userStats?.total || 0}
+                </div>
+                <div className="text-sm text-muted-foreground korean-text">총 회원수</div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-yellow-500/10 rounded-xl flex items-center justify-center">
+                    <Crown className="text-yellow-500 h-6 w-6" />
+                  </div>
+                  <TrendingUp className="h-4 w-4 text-secondary" />
+                </div>
+                <div className="text-2xl font-bold mb-1 english-text" data-testid="text-premium-users">
+                  {userStatsLoading ? "..." : userStats?.premium || 0}
+                </div>
+                <div className="text-sm text-muted-foreground korean-text">프리미엄 회원</div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center">
+                    <Shield className="text-green-500 h-6 w-6" />
+                  </div>
+                  <TrendingUp className="h-4 w-4 text-secondary" />
+                </div>
+                <div className="text-2xl font-bold mb-1 english-text" data-testid="text-admin-users">
+                  {userStatsLoading ? "..." : userStats?.admin || 0}
+                </div>
+                <div className="text-sm text-muted-foreground korean-text">관리자</div>
               </CardContent>
             </Card>
           </div>

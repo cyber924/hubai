@@ -17,6 +17,7 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import ProductFeed from "@/pages/admin/product-feed";
 import ProductManagement from "@/pages/admin/product-management";
 import AiReports from "@/pages/admin/ai-reports";
+import AdminUsers from "@/pages/admin/users";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -51,6 +52,11 @@ function Router() {
       <Route path="/admin">
         <ProtectedRoute requireAdmin>
           <AdminDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/users">
+        <ProtectedRoute requireAdmin>
+          <AdminUsers />
         </ProtectedRoute>
       </Route>
       <Route path="/admin/product-feed">

@@ -22,6 +22,7 @@ app.use(session({
   cookie: {
     secure: false, // Set to true if using HTTPS
     httpOnly: true,
+    sameSite: 'lax', // CSRF protection
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
