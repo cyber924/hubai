@@ -55,13 +55,15 @@ export default function Navbar() {
           
           {/* CTA Buttons */}
           <div className="flex items-center space-x-3">
-            <Button
-              variant="ghost"
-              className="hidden sm:inline-flex korean-text"
-              data-testid="button-login"
-            >
-              로그인
-            </Button>
+            <Link href="/login">
+              <Button
+                variant="ghost"
+                className="hidden sm:inline-flex korean-text"
+                data-testid="button-login"
+              >
+                로그인
+              </Button>
+            </Link>
             <Link href="/subscribe">
               <Button className="korean-text" data-testid="button-free-trial">
                 무료 체험 시작
