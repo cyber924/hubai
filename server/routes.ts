@@ -206,6 +206,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // CSV 샘플 다운로드 (반드시 :id 라우트보다 먼저 정의)
+  app.get("/api/products/csv-sample", requireAuth, requireAdmin, (req, res) => {
+    try {
+      // CSV 샘플 데이터 (한글 상품명과 설명)
+      const sampleData = [
+        {
+          name: "하이힐",
+          description: "우아하고 세련된 디자인의 하이힐입니다. 정장부터 파티룩까지 완벽한 스타일링이 가능합니다.",
+          price: "95000",
+          originalPrice: "120000",
+          imageUrl: "https://example.com/heels.jpg",
+          imageUrls: "https://example.com/heels1.jpg,https://example.com/heels2.jpg",
+          category: "신발",
+          subcategory: "하이힐",
+          brand: "FashionHub",
+          source: "zigzag",
+          sourceUrl: "https://zigzag.kr/sample1",
+          sourceProductId: "ZZ001",
+          tags: "분석완료,자고픽",
+          season: "사계절",
+          gender: "여성",
+          ageGroup: "20-30대"
+        },
+        {
+          name: "블라우스",
+          description: "시원하고 편안한 착용감의 블라우스입니다. 오피스룩이나 데일리 착용에 완벽합니다.",
+          price: "48000",
+          originalPrice: "65000",
+          imageUrl: "https://example.com/blouse.jpg",
+          imageUrls: "https://example.com/blouse1.jpg,https://example.com/blouse2.jpg,https://example.com/blouse3.jpg",
+          category: "상의",
+          subcategory: "블라우스",
+          brand: "StylePlus",
+          source: "naver",
+          sourceUrl: "https://shopping.naver.com/sample2",
+          sourceProductId: "NV002",
+          tags: "분석완료",
+          season: "봄",
+          gender: "여성",
+          ageGroup: "30-40대"
+        },
+        {
+          name: "플리츠 스커트",
+          description: "트렌디한 플리츠 디자인의 스커트입니다. 다양한 상의와 매치하여 스타일링할 수 있습니다.",
+          price: "38000",
+          originalPrice: "45000",
+          imageUrl: "https://example.com/skirt.jpg",
+          imageUrls: "https://example.com/skirt1.jpg,https://example.com/skirt2.jpg",
+          category: "하의",
+          subcategory: "스커트",
+          brand: "TrendyWear",
+          source: "coupang",
+          sourceUrl: "https://coupang.com/sample3",
+          sourceProductId: "CP003",
+          tags: "분석완료,트렌드",
+          season: "가을",
+          gender: "여성",
+          ageGroup: "20-30대"
+        }
+      ];
+
+      // CSV 헤더 생성
+      const headers = [
+        "name", "description", "price", "originalPrice", "imageUrl", "imageUrls",
+        "category", "subcategory", "brand", "source", "sourceUrl", "sourceProductId",
+        "tags", "season", "gender", "ageGroup"
+      ];
+
+      // CSV 데이터 생성
+      let csvContent = headers.join(",") + "\n";
+      
+      sampleData.forEach(row => {
+        const values = headers.map(header => {
+          const value = row[header as keyof typeof row] || "";
+          // CSV에서 콤마와 따옴표 이스케이프 처리
+          if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        });
+        csvContent += values.join(",") + "\n";
+      });
+
+      // CSV 파일로 응답
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="products_sample.csv"');
+      res.send('\ufeff' + csvContent); // BOM 추가로 한글 인코딩 문제 해결
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate CSV sample: " + error.message });
+    }
+  });
+
   app.get("/api/products/:id", async (req, res) => {
     try {
       const product = await storage.getProduct(req.params.id);
@@ -320,97 +412,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // CSV 샘플 다운로드
-  app.get("/api/products/csv-sample", requireAuth, requireAdmin, (req, res) => {
-    try {
-      // CSV 샘플 데이터 (한글 상품명과 설명)
-      const sampleData = [
-        {
-          name: "하이힐",
-          description: "우아하고 세련된 디자인의 하이힐입니다. 정장부터 파티룩까지 완벽한 스타일링이 가능합니다.",
-          price: "95000",
-          originalPrice: "120000",
-          imageUrl: "https://example.com/heels.jpg",
-          imageUrls: "https://example.com/heels1.jpg,https://example.com/heels2.jpg",
-          category: "신발",
-          subcategory: "하이힐",
-          brand: "FashionHub",
-          source: "zigzag",
-          sourceUrl: "https://zigzag.kr/sample1",
-          sourceProductId: "ZZ001",
-          tags: "분석완료,자고픽",
-          season: "사계절",
-          gender: "여성",
-          ageGroup: "20-30대"
-        },
-        {
-          name: "블라우스",
-          description: "시원하고 편안한 착용감의 블라우스입니다. 오피스룩이나 데일리 착용에 완벽합니다.",
-          price: "48000",
-          originalPrice: "65000",
-          imageUrl: "https://example.com/blouse.jpg",
-          imageUrls: "https://example.com/blouse1.jpg,https://example.com/blouse2.jpg,https://example.com/blouse3.jpg",
-          category: "상의",
-          subcategory: "블라우스",
-          brand: "StylePlus",
-          source: "naver",
-          sourceUrl: "https://shopping.naver.com/sample2",
-          sourceProductId: "NV002",
-          tags: "분석완료",
-          season: "봄",
-          gender: "여성",
-          ageGroup: "30-40대"
-        },
-        {
-          name: "플리츠 스커트",
-          description: "트렌디한 플리츠 디자인의 스커트입니다. 다양한 상의와 매치하여 스타일링할 수 있습니다.",
-          price: "38000",
-          originalPrice: "45000",
-          imageUrl: "https://example.com/skirt.jpg",
-          imageUrls: "https://example.com/skirt1.jpg,https://example.com/skirt2.jpg",
-          category: "하의",
-          subcategory: "스커트",
-          brand: "TrendyWear",
-          source: "coupang",
-          sourceUrl: "https://coupang.com/sample3",
-          sourceProductId: "CP003",
-          tags: "분석완료,트렌드",
-          season: "가을",
-          gender: "여성",
-          ageGroup: "20-30대"
-        }
-      ];
-
-      // CSV 헤더 생성
-      const headers = [
-        "name", "description", "price", "originalPrice", "imageUrl", "imageUrls",
-        "category", "subcategory", "brand", "source", "sourceUrl", "sourceProductId",
-        "tags", "season", "gender", "ageGroup"
-      ];
-
-      // CSV 데이터 생성
-      let csvContent = headers.join(",") + "\n";
-      
-      sampleData.forEach(row => {
-        const values = headers.map(header => {
-          const value = row[header as keyof typeof row] || "";
-          // CSV에서 콤마와 따옴표 이스케이프 처리
-          if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-            return `"${value.replace(/"/g, '""')}"`;
-          }
-          return value;
-        });
-        csvContent += values.join(",") + "\n";
-      });
-
-      // CSV 파일로 응답
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', 'attachment; filename="products_sample.csv"');
-      res.send('\ufeff' + csvContent); // BOM 추가로 한글 인코딩 문제 해결
-    } catch (error: any) {
-      res.status(500).json({ message: "Failed to generate CSV sample: " + error.message });
-    }
-  });
 
   // Product detail information routes (DB read-only)
   app.get("/api/products/:id/options", async (req, res) => {
