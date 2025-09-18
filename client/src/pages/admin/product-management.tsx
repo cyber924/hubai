@@ -14,6 +14,7 @@ import {
   RefreshCw,
   CheckCircle,
   Upload,
+  Download,
   ShoppingCart,
   Eye,
   FileSpreadsheet
@@ -180,6 +181,46 @@ export default function ProductManagement() {
     }
   };
 
+  const handleCsvSampleDownload = async () => {
+    try {
+      const response = await fetch('/api/products/csv-sample', {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        // 파일 다운로드 처리
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'products_sample.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        toast({
+          title: "성공",
+          description: "CSV 샘플 파일이 다운로드되었습니다.",
+        });
+      } else {
+        const result = await response.json();
+        toast({
+          title: "오류",
+          description: result.message || "CSV 샘플 다운로드에 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "오류",
+        description: "CSV 샘플 다운로드 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "analyzed":
@@ -303,6 +344,16 @@ export default function ProductManagement() {
                 </p>
                 
                 <div className="flex items-center space-x-4">
+                  <Button
+                    variant="secondary"
+                    onClick={handleCsvSampleDownload}
+                    className="korean-text"
+                    data-testid="button-download-csv-sample"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    CSV 샘플 다운로드
+                  </Button>
+                  
                   <input
                     id="csv-file-input"
                     type="file"
