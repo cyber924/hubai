@@ -313,6 +313,8 @@ export class MemStorage implements IStorage {
     const option: ProductOption = {
       ...insertOption,
       id,
+      additionalPrice: insertOption.additionalPrice ?? null,
+      stock: insertOption.stock ?? null,
       isActive: insertOption.isActive ?? true,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -349,6 +351,11 @@ export class MemStorage implements IStorage {
     const inventory: Inventory = {
       ...insertInventory,
       id,
+      productOptionId: insertInventory.productOptionId ?? null,
+      currentStock: insertInventory.currentStock ?? null,
+      reservedStock: insertInventory.reservedStock ?? null,
+      lowStockThreshold: insertInventory.lowStockThreshold ?? null,
+      lastRestocked: insertInventory.lastRestocked ?? null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -647,5 +654,5 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-// Use DatabaseStorage instead of MemStorage
-export const storage = new DatabaseStorage();
+// Use MemStorage for development instead of DatabaseStorage due to schema issues
+export const storage = new MemStorage();

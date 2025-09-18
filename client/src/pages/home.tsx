@@ -199,9 +199,14 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-              {products?.slice(0, 8).map((product: any) => (
+              {Array.isArray(products) && products.slice(0, 8).map((product: any) => (
                 <ProductCard key={product.id} product={product} />
               ))}
+              {!Array.isArray(products) && !isLoading && (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-muted-foreground korean-text">상품을 불러올 수 없습니다.</p>
+                </div>
+              )}
             </div>
           )}
           
