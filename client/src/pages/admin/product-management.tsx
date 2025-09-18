@@ -299,7 +299,7 @@ export default function ProductManagement() {
                 <p className="text-sm text-muted-foreground korean-text">
                   CSV 파일로 상품을 대량 등록할 수 있습니다. 
                   <br />
-                  필수 컬럼: name, price | 선택 컬럼: description, originalPrice, imageUrl, category, subcategory, brand, source, tags, season, gender, ageGroup
+                  필수 컬럼: name, price | 선택 컬럼: description, originalPrice, imageUrl, imageUrls, category, subcategory, brand, source, tags, season, gender, ageGroup
                 </p>
                 
                 <div className="flex items-center space-x-4">

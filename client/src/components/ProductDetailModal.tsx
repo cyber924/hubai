@@ -62,6 +62,7 @@ export default function ProductDetailModal({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 이미지 영역 */}
           <div className="space-y-4">
+            {/* 메인 이미지 */}
             {product.imageUrl && (
               <img 
                 src={product.imageUrl} 
@@ -69,6 +70,24 @@ export default function ProductDetailModal({
                 className="w-full h-96 object-cover rounded-lg border"
                 data-testid="img-product-detail"
               />
+            )}
+            
+            {/* 추가 이미지들 */}
+            {product.imageUrls && product.imageUrls.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium korean-text text-muted-foreground">추가 이미지</h4>
+                <div className="grid grid-cols-3 gap-2">
+                  {product.imageUrls.map((imageUrl, index) => (
+                    <img
+                      key={index}
+                      src={imageUrl}
+                      alt={`${product.name} 추가 이미지 ${index + 1}`}
+                      className="w-full h-24 object-cover rounded border"
+                      data-testid={`img-product-additional-${index}`}
+                    />
+                  ))}
+                </div>
+              </div>
             )}
             <div className="flex items-center justify-between">
               {getStatusBadge(product.status || "pending")}

@@ -265,6 +265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   price: row.price ? parseFloat(row.price.toString()) : 0,
                   originalPrice: row.originalPrice ? parseFloat(row.originalPrice.toString()) : null,
                   imageUrl: row.imageUrl || null,
+                  imageUrls: row.imageUrls ? row.imageUrls.split(',').map((url: string) => url.trim()) : [],
                   category: row.category || null,
                   subcategory: row.subcategory || null,
                   brand: row.brand || null,

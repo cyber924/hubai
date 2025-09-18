@@ -22,6 +22,7 @@ export const products = pgTable("products", {
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   originalPrice: decimal("original_price", { precision: 10, scale: 2 }),
   imageUrl: text("image_url"),
+  imageUrls: text("image_urls").array().default(sql`ARRAY[]::text[]`), // Multiple images support
   category: text("category"),
   subcategory: text("subcategory"),
   brand: text("brand"),
