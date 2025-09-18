@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, users, products, marketplaceSyncs, scrapingJobs, productOptions, inventory } from "@shared/schema";
+import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -302,6 +302,72 @@ export class MemStorage implements IStorage {
       admin: users.filter(u => u.isAdmin).length
     };
   }
+
+  // Product options operations
+  async getProductOptions(productId: string): Promise<ProductOption[]> {
+    return Array.from(this.productOptions.values()).filter(option => option.productId === productId);
+  }
+
+  async createProductOption(insertOption: InsertProductOption): Promise<ProductOption> {
+    const id = randomUUID();
+    const option: ProductOption = {
+      ...insertOption,
+      id,
+      isActive: insertOption.isActive ?? true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.productOptions.set(id, option);
+    return option;
+  }
+
+  async updateProductOption(id: string, updates: Partial<ProductOption>): Promise<ProductOption> {
+    const option = this.productOptions.get(id);
+    if (!option) throw new Error("Product option not found");
+    
+    const updatedOption = { ...option, ...updates, updatedAt: new Date() };
+    this.productOptions.set(id, updatedOption);
+    return updatedOption;
+  }
+
+  async deleteProductOption(id: string): Promise<void> {
+    this.productOptions.delete(id);
+  }
+
+  // Inventory operations
+  async getInventory(productId?: string): Promise<Inventory[]> {
+    const inventories = Array.from(this.inventories.values());
+    return productId ? inventories.filter(inv => inv.productId === productId) : inventories;
+  }
+
+  async getInventoryByProduct(productId: string): Promise<Inventory[]> {
+    return Array.from(this.inventories.values()).filter(inv => inv.productId === productId);
+  }
+
+  async createInventory(insertInventory: InsertInventory): Promise<Inventory> {
+    const id = randomUUID();
+    const inventory: Inventory = {
+      ...insertInventory,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.inventories.set(id, inventory);
+    return inventory;
+  }
+
+  async updateInventory(id: string, updates: Partial<Inventory>): Promise<Inventory> {
+    const inventory = this.inventories.get(id);
+    if (!inventory) throw new Error("Inventory not found");
+    
+    const updatedInventory = { ...inventory, ...updates, updatedAt: new Date() };
+    this.inventories.set(id, updatedInventory);
+    return updatedInventory;
+  }
+
+  async deleteInventory(id: string): Promise<void> {
+    this.inventories.delete(id);
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -525,6 +591,59 @@ export class DatabaseStorage implements IStorage {
       free: freeCount.count,
       admin: adminCount.count
     };
+  }
+
+  // Product options operations
+  async getProductOptions(productId: string): Promise<ProductOption[]> {
+    return await this.db.select().from(productOptions).where(eq(productOptions.productId, productId));
+  }
+
+  async createProductOption(insertOption: InsertProductOption): Promise<ProductOption> {
+    const result = await this.db.insert(productOptions).values(insertOption).returning();
+    return result[0];
+  }
+
+  async updateProductOption(id: string, updates: Partial<ProductOption>): Promise<ProductOption> {
+    const result = await this.db.update(productOptions)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(productOptions.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Product option not found");
+    return result[0];
+  }
+
+  async deleteProductOption(id: string): Promise<void> {
+    await this.db.delete(productOptions).where(eq(productOptions.id, id));
+  }
+
+  // Inventory operations
+  async getInventory(productId?: string): Promise<Inventory[]> {
+    if (productId) {
+      return await this.db.select().from(productInventory).where(eq(productInventory.productId, productId));
+    }
+    return await this.db.select().from(productInventory);
+  }
+
+  async getInventoryByProduct(productId: string): Promise<Inventory[]> {
+    return await this.db.select().from(productInventory).where(eq(productInventory.productId, productId));
+  }
+
+  async createInventory(insertInventory: InsertInventory): Promise<Inventory> {
+    const result = await this.db.insert(productInventory).values(insertInventory).returning();
+    return result[0];
+  }
+
+  async updateInventory(id: string, updates: Partial<Inventory>): Promise<Inventory> {
+    const result = await this.db.update(productInventory)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(productInventory.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Inventory not found");
+    return result[0];
+  }
+
+  async deleteInventory(id: string): Promise<void> {
+    await this.db.delete(productInventory).where(eq(productInventory.id, id));
   }
 }
 

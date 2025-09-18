@@ -74,7 +74,7 @@ export const productOptions = pgTable("product_options", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const inventory = pgTable("inventory", {
+export const productInventory = pgTable("product_inventory", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").references(() => products.id).notNull(),
   productOptionId: varchar("product_option_id").references(() => productOptions.id), // nullable for simple products
@@ -122,7 +122,7 @@ export const insertProductOptionSchema = createInsertSchema(productOptions).omit
   updatedAt: true,
 });
 
-export const insertInventorySchema = createInsertSchema(inventory).omit({
+export const insertInventorySchema = createInsertSchema(productInventory).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -138,5 +138,5 @@ export type ScrapingJob = typeof scrapingJobs.$inferSelect;
 export type InsertScrapingJob = z.infer<typeof insertScrapingJobSchema>;
 export type ProductOption = typeof productOptions.$inferSelect;
 export type InsertProductOption = z.infer<typeof insertProductOptionSchema>;
-export type Inventory = typeof inventory.$inferSelect;
+export type Inventory = typeof productInventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
