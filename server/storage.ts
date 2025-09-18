@@ -1,5 +1,8 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob } from "@shared/schema";
+import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, users, products, marketplaceSyncs, scrapingJobs } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { eq, desc, sql } from 'drizzle-orm';
 
 export interface IStorage {
   // User operations
@@ -246,4 +249,201 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  private db;
+
+  constructor() {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL is required for DatabaseStorage');
+    }
+    const sql = postgres(process.env.DATABASE_URL, {
+      ssl: 'require'
+    });
+    this.db = drizzle(sql);
+  }
+
+  // User operations
+  async getUser(id: string): Promise<User | undefined> {
+    const result = await this.db.select().from(users).where(eq(users.id, id));
+    return result[0];
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const result = await this.db.select().from(users).where(eq(users.username, username));
+    return result[0];
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await this.db.select().from(users).where(eq(users.email, email));
+    return result[0];
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const result = await this.db.insert(users).values({
+      ...insertUser,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      subscriptionPlan: "free",
+      isAdmin: false
+    }).returning();
+    return result[0];
+  }
+
+  async updateUserStripeInfo(id: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User> {
+    const result = await this.db.update(users)
+      .set({ stripeCustomerId, stripeSubscriptionId })
+      .where(eq(users.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("User not found");
+    return result[0];
+  }
+
+  async updateStripeCustomerId(id: string, stripeCustomerId: string): Promise<User> {
+    const result = await this.db.update(users)
+      .set({ stripeCustomerId })
+      .where(eq(users.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("User not found");
+    return result[0];
+  }
+
+  // Product operations
+  async getProducts(limit = 50, offset = 0): Promise<Product[]> {
+    return await this.db.select().from(products).orderBy(desc(products.createdAt)).limit(limit).offset(offset);
+  }
+
+  async getProduct(id: string): Promise<Product | undefined> {
+    const result = await this.db.select().from(products).where(eq(products.id, id));
+    return result[0];
+  }
+
+  async getProductsBySource(source: string): Promise<Product[]> {
+    return await this.db.select().from(products).where(eq(products.source, source));
+  }
+
+  async getProductsByStatus(status: string): Promise<Product[]> {
+    return await this.db.select().from(products).where(eq(products.status, status));
+  }
+
+  async createProduct(insertProduct: InsertProduct): Promise<Product> {
+    const result = await this.db.insert(products).values({
+      ...insertProduct,
+      description: insertProduct.description ?? null,
+      originalPrice: insertProduct.originalPrice ?? null,
+      imageUrl: insertProduct.imageUrl ?? null,
+      category: insertProduct.category ?? null,
+      subcategory: insertProduct.subcategory ?? null,
+      brand: insertProduct.brand ?? null,
+      sourceUrl: insertProduct.sourceUrl ?? null,
+      sourceProductId: insertProduct.sourceProductId ?? null,
+      tags: insertProduct.tags ?? null,
+      season: insertProduct.season ?? null,
+      gender: insertProduct.gender ?? null,
+      ageGroup: insertProduct.ageGroup ?? null,
+      status: "pending",
+      aiAnalysis: null
+    }).returning();
+    return result[0];
+  }
+
+  async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
+    const result = await this.db.update(products)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(products.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Product not found");
+    return result[0];
+  }
+
+  async updateProductAiAnalysis(id: string, analysis: any): Promise<Product> {
+    const result = await this.db.update(products)
+      .set({
+        aiAnalysis: analysis,
+        status: "analyzed",
+        category: analysis.category || null,
+        tags: analysis.tags || null,
+        season: analysis.season || null,
+        updatedAt: new Date()
+      })
+      .where(eq(products.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Product not found");
+    return result[0];
+  }
+
+  async deleteProduct(id: string): Promise<void> {
+    await this.db.delete(products).where(eq(products.id, id));
+  }
+
+  // Marketplace sync operations
+  async getMarketplaceSyncs(productId?: string): Promise<MarketplaceSync[]> {
+    if (productId) {
+      return await this.db.select().from(marketplaceSyncs).where(eq(marketplaceSyncs.productId, productId));
+    }
+    return await this.db.select().from(marketplaceSyncs);
+  }
+
+  async createMarketplaceSync(insertSync: InsertMarketplaceSync): Promise<MarketplaceSync> {
+    const result = await this.db.insert(marketplaceSyncs).values({
+      ...insertSync,
+      status: insertSync.status ?? null,
+      marketplaceProductId: null,
+      syncedAt: null,
+      errorMessage: null
+    }).returning();
+    return result[0];
+  }
+
+  async updateMarketplaceSync(id: string, updates: Partial<MarketplaceSync>): Promise<MarketplaceSync> {
+    const result = await this.db.update(marketplaceSyncs)
+      .set(updates)
+      .where(eq(marketplaceSyncs.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Marketplace sync not found");
+    return result[0];
+  }
+
+  // Scraping job operations
+  async getScrapingJobs(limit = 10): Promise<ScrapingJob[]> {
+    return await this.db.select().from(scrapingJobs).orderBy(desc(scrapingJobs.createdAt)).limit(limit);
+  }
+
+  async createScrapingJob(insertJob: InsertScrapingJob): Promise<ScrapingJob> {
+    const result = await this.db.insert(scrapingJobs).values({
+      ...insertJob,
+      status: insertJob.status ?? null,
+      productsFound: insertJob.productsFound ?? null,
+      productsProcessed: insertJob.productsProcessed ?? null,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null
+    }).returning();
+    return result[0];
+  }
+
+  async updateScrapingJob(id: string, updates: Partial<ScrapingJob>): Promise<ScrapingJob> {
+    const result = await this.db.update(scrapingJobs)
+      .set(updates)
+      .where(eq(scrapingJobs.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Scraping job not found");
+    return result[0];
+  }
+
+  async getProductStats(): Promise<{ total: number; analyzed: number; registered: number; synced: number; }> {
+    const [totalCount] = await this.db.select({ count: sql<number>`count(*)` }).from(products);
+    const [analyzedCount] = await this.db.select({ count: sql<number>`count(*)` }).from(products).where(sql`status IN ('analyzed', 'registered')`);
+    const [registeredCount] = await this.db.select({ count: sql<number>`count(*)` }).from(products).where(eq(products.status, 'registered'));
+    const [syncedCount] = await this.db.select({ count: sql<number>`count(*)` }).from(marketplaceSyncs).where(eq(marketplaceSyncs.status, 'synced'));
+
+    return {
+      total: totalCount.count,
+      analyzed: analyzedCount.count,
+      registered: registeredCount.count,
+      synced: syncedCount.count
+    };
+  }
+}
+
+// Use DatabaseStorage instead of MemStorage
+export const storage = new DatabaseStorage();
