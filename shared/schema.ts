@@ -62,6 +62,30 @@ export const scrapingJobs = pgTable("scraping_jobs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const productOptions = pgTable("product_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  optionType: text("option_type").notNull(), // size, color, material, etc.
+  optionValue: text("option_value").notNull(), // S, M, L or red, blue, etc.
+  additionalPrice: decimal("additional_price", { precision: 10, scale: 2 }).default("0"),
+  stock: integer("stock").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const inventory = pgTable("inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  productOptionId: varchar("product_option_id").references(() => productOptions.id), // nullable for simple products
+  currentStock: integer("current_stock").default(0),
+  reservedStock: integer("reserved_stock").default(0), // for pending orders
+  lowStockThreshold: integer("low_stock_threshold").default(10),
+  lastRestocked: timestamp("last_restocked"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -92,6 +116,18 @@ export const insertScrapingJobSchema = createInsertSchema(scrapingJobs).omit({
   completedAt: true,
 });
 
+export const insertProductOptionSchema = createInsertSchema(productOptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertInventorySchema = createInsertSchema(inventory).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Product = typeof products.$inferSelect;
@@ -100,3 +136,7 @@ export type MarketplaceSync = typeof marketplaceSyncs.$inferSelect;
 export type InsertMarketplaceSync = z.infer<typeof insertMarketplaceSyncSchema>;
 export type ScrapingJob = typeof scrapingJobs.$inferSelect;
 export type InsertScrapingJob = z.infer<typeof insertScrapingJobSchema>;
+export type ProductOption = typeof productOptions.$inferSelect;
+export type InsertProductOption = z.infer<typeof insertProductOptionSchema>;
+export type Inventory = typeof inventory.$inferSelect;
+export type InsertInventory = z.infer<typeof insertInventorySchema>;

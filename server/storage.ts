@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, users, products, marketplaceSyncs, scrapingJobs } from "@shared/schema";
+import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, users, products, marketplaceSyncs, scrapingJobs, productOptions, inventory } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -24,6 +24,19 @@ export interface IStorage {
   updateProduct(id: string, updates: Partial<Product>): Promise<Product>;
   updateProductAiAnalysis(id: string, analysis: any): Promise<Product>;
   deleteProduct(id: string): Promise<void>;
+
+  // Product options operations
+  getProductOptions(productId: string): Promise<ProductOption[]>;
+  createProductOption(option: InsertProductOption): Promise<ProductOption>;
+  updateProductOption(id: string, updates: Partial<ProductOption>): Promise<ProductOption>;
+  deleteProductOption(id: string): Promise<void>;
+
+  // Inventory operations
+  getInventory(productId?: string): Promise<Inventory[]>;
+  getInventoryByProduct(productId: string): Promise<Inventory[]>;
+  createInventory(inventory: InsertInventory): Promise<Inventory>;
+  updateInventory(id: string, updates: Partial<Inventory>): Promise<Inventory>;
+  deleteInventory(id: string): Promise<void>;
 
   // Marketplace sync operations
   getMarketplaceSyncs(productId?: string): Promise<MarketplaceSync[]>;
@@ -55,12 +68,16 @@ export class MemStorage implements IStorage {
   private products: Map<string, Product>;
   private marketplaceSyncs: Map<string, MarketplaceSync>;
   private scrapingJobs: Map<string, ScrapingJob>;
+  private productOptions: Map<string, ProductOption>;
+  private inventories: Map<string, Inventory>;
 
   constructor() {
     this.users = new Map();
     this.products = new Map();
     this.marketplaceSyncs = new Map();
     this.scrapingJobs = new Map();
+    this.productOptions = new Map();
+    this.inventories = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -153,6 +170,7 @@ export class MemStorage implements IStorage {
       description: insertProduct.description ?? null,
       originalPrice: insertProduct.originalPrice ?? null,
       imageUrl: insertProduct.imageUrl ?? null,
+      imageUrls: insertProduct.imageUrls ?? null,
       category: insertProduct.category ?? null,
       subcategory: insertProduct.subcategory ?? null,
       brand: insertProduct.brand ?? null,
@@ -381,6 +399,7 @@ export class DatabaseStorage implements IStorage {
       description: insertProduct.description ?? null,
       originalPrice: insertProduct.originalPrice ?? null,
       imageUrl: insertProduct.imageUrl ?? null,
+      imageUrls: insertProduct.imageUrls ?? null,
       category: insertProduct.category ?? null,
       subcategory: insertProduct.subcategory ?? null,
       brand: insertProduct.brand ?? null,
