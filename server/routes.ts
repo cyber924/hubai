@@ -470,6 +470,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bootstrap admin endpoint - for development only
+  app.post("/api/bootstrap/admin", async (req, res) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      const user = await storage.updateUser(userId, { isAdmin: true });
+      const { password: _, ...safeUser } = user;
+      res.json({ message: "User updated to admin", user: safeUser });
+    } catch (error: any) {
+      if (error.message === "User not found") {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.status(500).json({ message: "Failed to update user: " + error.message });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
