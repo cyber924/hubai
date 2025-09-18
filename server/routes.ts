@@ -320,6 +320,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Product detail information routes (DB read-only)
+  app.get("/api/products/:id/options", async (req, res) => {
+    try {
+      const productId = req.params.id;
+      const options = await storage.getProductOptions(productId);
+      res.json(options);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch product options: " + error.message });
+    }
+  });
+
+  app.get("/api/products/:id/inventory", async (req, res) => {
+    try {
+      const productId = req.params.id;
+      const inventory = await storage.getInventoryByProduct(productId);
+      res.json(inventory);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch product inventory: " + error.message });
+    }
+  });
+
+  app.get("/api/products/:id/syncs", async (req, res) => {
+    try {
+      const productId = req.params.id;
+      const syncs = await storage.getMarketplaceSyncs(productId);
+      res.json(syncs);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch marketplace syncs: " + error.message });
+    }
+  });
+
   // Scraping routes
   app.post("/api/scraping/start", requireAuth, requireAdmin, async (req, res) => {
     try {
