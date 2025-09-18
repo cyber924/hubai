@@ -2,8 +2,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ExternalLink, Edit, Trash2, Package, Calendar, Users, MapPin } from "lucide-react";
-import type { Product } from "@shared/schema";
+import { ExternalLink, Edit, Trash2, Package, Calendar, Users, MapPin, Brain, Database, RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import type { Product, ProductOption, Inventory, MarketplaceSync } from "@shared/schema";
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -21,6 +22,22 @@ export default function ProductDetailModal({
   onDelete 
 }: ProductDetailModalProps) {
   if (!product) return null;
+
+  // DB에서 추가 정보 불러오기
+  const { data: productOptions, isLoading: optionsLoading } = useQuery<ProductOption[]>({
+    queryKey: ['/api/products', product.id, 'options'],
+    enabled: open && !!product.id,
+  });
+
+  const { data: inventory, isLoading: inventoryLoading } = useQuery<Inventory[]>({
+    queryKey: ['/api/products', product.id, 'inventory'],
+    enabled: open && !!product.id,
+  });
+
+  const { data: syncs, isLoading: syncsLoading } = useQuery<MarketplaceSync[]>({
+    queryKey: ['/api/products', product.id, 'syncs'],
+    enabled: open && !!product.id,
+  });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -192,6 +209,207 @@ export default function ProductDetailModal({
                     </Badge>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* AI 분석 정보 */}
+            {product.aiAnalysis && (
+              <div data-testid="section-ai-analysis">
+                <h4 className="font-medium korean-text mb-3 flex items-center gap-2">
+                  <Brain className="h-4 w-4" />
+                  AI 분석
+                </h4>
+                <div className="space-y-2 text-sm border rounded-lg p-3 bg-muted/30">
+                  {(product.aiAnalysis as any)?.description && (
+                    <div>
+                      <span className="text-muted-foreground korean-text">분석:</span>
+                      <span className="korean-text ml-2">{(product.aiAnalysis as any).description}</span>
+                    </div>
+                  )}
+                  {(product.aiAnalysis as any)?.style && (
+                    <div>
+                      <span className="text-muted-foreground korean-text">스타일:</span>
+                      <span className="korean-text ml-2">{(product.aiAnalysis as any).style}</span>
+                    </div>
+                  )}
+                  {(product.aiAnalysis as any)?.recommendedPrice && (
+                    <div>
+                      <span className="text-muted-foreground korean-text">추천 가격:</span>
+                      <span className="korean-text ml-2">₩{Number((product.aiAnalysis as any).recommendedPrice).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {(product.aiAnalysis as any)?.confidence && (
+                    <div>
+                      <span className="text-muted-foreground korean-text">신뢰도:</span>
+                      <span className="korean-text ml-2">{Math.round((product.aiAnalysis as any).confidence * 100)}%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 원본 정보 */}
+            {(product.sourceProductId || product.createdAt || product.updatedAt) && (
+              <div data-testid="section-source-info">
+                <h4 className="font-medium korean-text mb-3 flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  원본 정보
+                </h4>
+                <div className="space-y-2 text-sm border rounded-lg p-3 bg-muted/30">
+                  {product.sourceProductId && (
+                    <div>
+                      <span className="text-muted-foreground korean-text">원본 상품 ID:</span>
+                      <span className="korean-text ml-2">{product.sourceProductId}</span>
+                    </div>
+                  )}
+                  {product.createdAt && (
+                    <div>
+                      <span className="text-muted-foreground korean-text">생성일:</span>
+                      <span className="korean-text ml-2">{new Date(product.createdAt).toLocaleString('ko-KR')}</span>
+                    </div>
+                  )}
+                  {product.updatedAt && (
+                    <div>
+                      <span className="text-muted-foreground korean-text">수정일:</span>
+                      <span className="korean-text ml-2">{new Date(product.updatedAt).toLocaleString('ko-KR')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 상품 옵션 */}
+            {!optionsLoading && (
+              <div data-testid="section-product-options">
+                <h4 className="font-medium korean-text mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  상품 옵션
+                </h4>
+                {productOptions && productOptions.length > 0 ? (
+                  <div className="space-y-3">
+                    {Object.entries(
+                      productOptions.reduce((acc, option) => {
+                        if (!acc[option.optionType]) acc[option.optionType] = [];
+                        acc[option.optionType].push(option);
+                        return acc;
+                      }, {} as Record<string, ProductOption[]>)
+                    ).map(([type, options]) => (
+                      <div key={type} className="border rounded-lg p-3 bg-muted/30">
+                        <h5 className="font-medium korean-text mb-2">{type}</h5>
+                        <div className="space-y-1">
+                          {options.map((option) => (
+                            <div key={option.id} className="flex justify-between items-center text-sm">
+                              <span className="korean-text">{option.optionValue}</span>
+                              <div className="flex items-center gap-2">
+                                {option.additionalPrice && Number(option.additionalPrice) > 0 && (
+                                  <span className="text-xs">+₩{Number(option.additionalPrice).toLocaleString()}</span>
+                                )}
+                                <span className="text-xs text-muted-foreground">재고: {option.stock}</span>
+                                {!option.isActive && (
+                                  <Badge variant="destructive" className="text-xs">비활성</Badge>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border rounded-lg p-3 bg-muted/30 text-center text-muted-foreground korean-text text-sm">
+                    등록된 상품 옵션이 없습니다
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 재고 정보 */}
+            {!inventoryLoading && (
+              <div data-testid="section-inventory">
+                <h4 className="font-medium korean-text mb-3 flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  재고 관리
+                </h4>
+                {inventory && inventory.length > 0 ? (
+                  <div className="space-y-2">
+                    {inventory.map((item) => (
+                      <div key={item.id} className="border rounded-lg p-3 bg-muted/30">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground korean-text">현재 재고:</span>
+                            <span className="korean-text ml-2 font-medium">{item.currentStock}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground korean-text">예약 재고:</span>
+                            <span className="korean-text ml-2">{item.reservedStock}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground korean-text">부족 임계값:</span>
+                            <span className="korean-text ml-2">{item.lowStockThreshold}</span>
+                          </div>
+                          {item.lastRestocked && (
+                            <div>
+                              <span className="text-muted-foreground korean-text">마지막 입고:</span>
+                              <span className="korean-text ml-2">{new Date(item.lastRestocked).toLocaleDateString('ko-KR')}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border rounded-lg p-3 bg-muted/30 text-center text-muted-foreground korean-text text-sm">
+                    등록된 재고 정보가 없습니다
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 마켓플레이스 동기화 */}
+            {!syncsLoading && (
+              <div data-testid="section-marketplace-syncs">
+                <h4 className="font-medium korean-text mb-3 flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  마켓플레이스 동기화
+                </h4>
+                {syncs && syncs.length > 0 ? (
+                  <div className="space-y-2">
+                    {syncs.map((sync) => (
+                      <div key={sync.id} className="border rounded-lg p-3 bg-muted/30">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="font-medium korean-text">{sync.marketplace}</span>
+                          <Badge variant={sync.status === 'synced' ? 'default' : sync.status === 'failed' ? 'destructive' : 'secondary'}>
+                            {sync.status === 'synced' ? '동기화완료' : sync.status === 'failed' ? '실패' : '대기중'}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1 text-sm">
+                          {sync.marketplaceProductId && (
+                            <div>
+                              <span className="text-muted-foreground korean-text">상품 ID:</span>
+                              <span className="korean-text ml-2">{sync.marketplaceProductId}</span>
+                            </div>
+                          )}
+                          {sync.syncedAt && (
+                            <div>
+                              <span className="text-muted-foreground korean-text">동기화 시간:</span>
+                              <span className="korean-text ml-2">{new Date(sync.syncedAt).toLocaleString('ko-KR')}</span>
+                            </div>
+                          )}
+                          {sync.errorMessage && (
+                            <div>
+                              <span className="text-muted-foreground korean-text">오류:</span>
+                              <span className="text-destructive korean-text ml-2">{sync.errorMessage}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border rounded-lg p-3 bg-muted/30 text-center text-muted-foreground korean-text text-sm">
+                    마켓플레이스 동기화 이력이 없습니다
+                  </div>
+                )}
               </div>
             )}
 
