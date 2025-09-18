@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
-import { Menu, X, Box, LogOut, User } from "lucide-react";
+import { Menu, X, Box, LogOut, User, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/useAuth";
@@ -81,6 +81,17 @@ export default function Navbar() {
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuLabel className="korean-text">내 계정</DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    {user?.isAdmin && (
+                      <>
+                        <Link href="/admin">
+                          <DropdownMenuItem className="korean-text cursor-pointer" data-testid="link-admin-dashboard">
+                            <Settings className="h-4 w-4 mr-2" />
+                            관리자 대시보드
+                          </DropdownMenuItem>
+                        </Link>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
                     <DropdownMenuItem 
                       onClick={logout}
                       className="korean-text cursor-pointer"
