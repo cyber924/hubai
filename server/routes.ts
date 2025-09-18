@@ -473,14 +473,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bootstrap admin endpoint - for development only
   app.post("/api/bootstrap/admin", async (req, res) => {
     try {
-      const { userId } = req.body;
+      const { userId, password } = req.body;
       if (!userId) {
         return res.status(400).json({ message: "User ID is required" });
       }
       
-      const user = await storage.updateUser(userId, { isAdmin: true });
+      let updateData: any = { isAdmin: true };
+      
+      // If password is provided, hash it and update
+      if (password) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        updateData.password = hashedPassword;
+      }
+      
+      const user = await storage.updateUser(userId, updateData);
       const { password: _, ...safeUser } = user;
-      res.json({ message: "User updated to admin", user: safeUser });
+      res.json({ message: "User updated", user: safeUser });
     } catch (error: any) {
       if (error.message === "User not found") {
         return res.status(404).json({ message: "User not found" });
