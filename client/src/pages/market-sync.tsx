@@ -3,10 +3,138 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Download, ExternalLink, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RefreshCw, Download, ExternalLink, CheckCircle, Clock, AlertCircle, Settings } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function MarketSync() {
   const [selectedMarketplace, setSelectedMarketplace] = useState<string>("all");
+  const [showStylehubConfig, setShowStylehubConfig] = useState<boolean>(false);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([
+    'name', 'description', 'price', 'originalPrice', 'imageUrl', 'category', 'brand'
+  ]);
+  const { toast } = useToast();
+
+  // 스타일허브용 컬럼 옵션들
+  const availableColumns = [
+    { id: 'name', label: '상품명', checked: true },
+    { id: 'description', label: '상품설명', checked: true },
+    { id: 'price', label: '판매가', checked: true },
+    { id: 'originalPrice', label: '정가', checked: true },
+    { id: 'imageUrl', label: '이미지URL', checked: true },
+    { id: 'imageUrls', label: '추가이미지들', checked: false },
+    { id: 'category', label: '카테고리', checked: true },
+    { id: 'subcategory', label: '서브카테고리', checked: false },
+    { id: 'brand', label: '브랜드', checked: true },
+    { id: 'source', label: '수집소스', checked: false },
+    { id: 'sourceUrl', label: '원본URL', checked: false },
+    { id: 'sourceProductId', label: '원본상품ID', checked: false },
+    { id: 'tags', label: '태그', checked: false },
+    { id: 'season', label: '시즌', checked: false },
+    { id: 'gender', label: '성별', checked: false },
+    { id: 'ageGroup', label: '연령대', checked: false },
+    { id: 'status', label: '상태', checked: false },
+    { id: 'createdAt', label: '등록일', checked: false },
+    { id: 'updatedAt', label: '수정일', checked: false },
+  ];
+
+  // 컬럼 선택 핸들러
+  const handleColumnToggle = (columnId: string) => {
+    setSelectedColumns(prev => 
+      prev.includes(columnId) 
+        ? prev.filter(id => id !== columnId)
+        : [...prev, columnId]
+    );
+  };
+
+  // 스타일허브 커스텀 CSV 다운로드
+  const downloadStylehubCSV = async () => {
+    try {
+      const response = await fetch(`/api/products/csv/stylehub`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          columns: selectedColumns
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('CSV 다운로드에 실패했습니다.');
+      }
+
+      // Blob으로 파일 데이터 받기
+      const blob = await response.blob();
+      
+      // 파일 다운로드
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `stylehub_custom_products.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "다운로드 완료",
+        description: "스타일허브 커스텀 CSV 파일이 다운로드되었습니다.",
+      });
+    } catch (error) {
+      console.error('CSV 다운로드 에러:', error);
+      toast({
+        title: "다운로드 실패",
+        description: "CSV 파일 다운로드 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // 일반 CSV 다운로드 함수
+  const downloadCSV = async (marketplace: string) => {
+    if (marketplace === 'stylehub') {
+      downloadStylehubCSV();
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/products/csv/${marketplace}`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('CSV 다운로드에 실패했습니다.');
+      }
+
+      // Blob으로 파일 데이터 받기
+      const blob = await response.blob();
+      
+      // 파일 다운로드
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${marketplace}_products.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "다운로드 완료",
+        description: `${marketplace.toUpperCase()} 상품 CSV 파일이 다운로드되었습니다.`,
+      });
+    } catch (error) {
+      console.error('CSV 다운로드 에러:', error);
+      toast({
+        title: "다운로드 실패",
+        description: "CSV 파일 다운로드 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const { data: syncs, isLoading } = useQuery<any[]>({
     queryKey: ['/api/marketplace-syncs'],
@@ -24,6 +152,7 @@ export default function MarketSync() {
     { id: "naver", name: "네이버 스마트스토어", icon: "🛍️", color: "bg-green-500" },
     { id: "coupang", name: "쿠팡", icon: "📦", color: "bg-orange-500" },
     { id: "zigzag", name: "지그재그", icon: "💄", color: "bg-pink-500" },
+    { id: "stylehub", name: "스타일허브 커스텀", icon: "⚙️", color: "bg-blue-500" },
   ];
 
   const getStatusIcon = (status: string) => {
@@ -76,31 +205,94 @@ export default function MarketSync() {
                 <CardTitle className="korean-text">{marketplace.name}</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <div className="mb-4">
-                  <p className="text-2xl font-bold english-text">
-                    {syncs?.filter((sync: any) => sync.marketplace === marketplace.id && sync.status === "synced").length || 0}
-                  </p>
-                  <p className="text-sm text-muted-foreground korean-text">동기화된 상품</p>
-                </div>
-                <div className="space-y-2">
-                  <Button 
-                    className="w-full korean-text" 
-                    size="sm"
-                    data-testid={`button-sync-${marketplace.id}`}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    동기화
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="w-full korean-text" 
-                    size="sm"
-                    data-testid={`button-export-${marketplace.id}`}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    CSV 다운로드
-                  </Button>
-                </div>
+                {marketplace.id === 'stylehub' ? (
+                  // 스타일허브 커스텀 UI
+                  <div className="space-y-4">
+                    <div className="mb-4">
+                      <p className="text-2xl font-bold english-text">124</p>
+                      <p className="text-sm text-muted-foreground korean-text">전체 상품</p>
+                    </div>
+
+                    <div className="text-left">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium korean-text">컬럼 선택</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowStylehubConfig(!showStylehubConfig)}
+                          data-testid="button-toggle-columns"
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {showStylehubConfig && (
+                        <div className="max-h-32 overflow-y-auto border rounded-md p-2 space-y-1 mb-3">
+                          {availableColumns.map((column) => (
+                            <div key={column.id} className="flex items-center space-x-2">
+                              <Checkbox 
+                                id={column.id}
+                                checked={selectedColumns.includes(column.id)}
+                                onCheckedChange={() => handleColumnToggle(column.id)}
+                                data-testid={`checkbox-${column.id}`}
+                              />
+                              <label 
+                                htmlFor={column.id} 
+                                className="text-xs korean-text cursor-pointer"
+                              >
+                                {column.label}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="text-xs korean-text text-muted-foreground mb-3">
+                        선택된 컬럼: {selectedColumns.length}개
+                      </div>
+                    </div>
+
+                    <Button 
+                      className="w-full korean-text" 
+                      onClick={() => downloadCSV('stylehub')}
+                      disabled={selectedColumns.length === 0}
+                      data-testid="button-download-stylehub"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      커스텀 CSV 다운로드
+                    </Button>
+                  </div>
+                ) : (
+                  // 일반 마켓플레이스 UI
+                  <>
+                    <div className="mb-4">
+                      <p className="text-2xl font-bold english-text">
+                        {syncs?.filter((sync: any) => sync.marketplace === marketplace.id && sync.status === "synced").length || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground korean-text">동기화된 상품</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Button 
+                        className="w-full korean-text" 
+                        size="sm"
+                        data-testid={`button-sync-${marketplace.id}`}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        동기화
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="w-full korean-text" 
+                        size="sm"
+                        onClick={() => downloadCSV(marketplace.id)}
+                        data-testid={`button-export-${marketplace.id}`}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        CSV 다운로드
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           ))}

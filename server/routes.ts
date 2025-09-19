@@ -206,6 +206,277 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 마켓플레이스별 CSV 다운로드 API
+  app.get("/api/products/csv/:marketplace", requireAuth, async (req, res) => {
+    try {
+      const { marketplace } = req.params;
+      const { columns } = req.query; // 스타일허브용 사용자 정의 컬럼
+      
+      const products = await storage.getProducts(1000); // 최대 1000개 제품
+      
+      if (!products || products.length === 0) {
+        return res.status(404).json({ message: "다운로드할 상품이 없습니다." });
+      }
+
+      let csvData: any[] = [];
+      let headers: string[] = [];
+      let filename = "";
+
+      switch (marketplace) {
+        case "naver":
+          filename = "naver_products.csv";
+          headers = [
+            "상품명", "상품설명", "판매가", "정가", "대표이미지", "상세이미지들",
+            "카테고리", "서브카테고리", "브랜드", "원본URL", "상품ID", "태그",
+            "시즌", "성별", "연령대", "등록상태"
+          ];
+          csvData = products.map(product => ({
+            "상품명": product.name,
+            "상품설명": product.description || "",
+            "판매가": product.price,
+            "정가": product.originalPrice || product.price,
+            "대표이미지": product.imageUrl || "",
+            "상세이미지들": product.imageUrls ? product.imageUrls.join("|") : "",
+            "카테고리": product.category || "",
+            "서브카테고리": product.subcategory || "",
+            "브랜드": product.brand || "",
+            "원본URL": product.sourceUrl || "",
+            "상품ID": product.sourceProductId || "",
+            "태그": product.tags ? product.tags.join(",") : "",
+            "시즌": product.season || "",
+            "성별": product.gender || "",
+            "연령대": product.ageGroup || "",
+            "등록상태": product.status || "pending"
+          }));
+          break;
+
+        case "coupang":
+          filename = "coupang_products.csv";
+          headers = [
+            "Product Name", "Description", "Price", "Original Price", "Main Image", "Detail Images",
+            "Category", "Subcategory", "Brand", "Source URL", "Product ID", "Keywords",
+            "Season", "Gender", "Age Group", "Status"
+          ];
+          csvData = products.map(product => ({
+            "Product Name": product.name,
+            "Description": product.description || "",
+            "Price": product.price,
+            "Original Price": product.originalPrice || product.price,
+            "Main Image": product.imageUrl || "",
+            "Detail Images": product.imageUrls ? product.imageUrls.join(";") : "",
+            "Category": product.category || "",
+            "Subcategory": product.subcategory || "",
+            "Brand": product.brand || "",
+            "Source URL": product.sourceUrl || "",
+            "Product ID": product.sourceProductId || "",
+            "Keywords": product.tags ? product.tags.join(",") : "",
+            "Season": product.season || "",
+            "Gender": product.gender || "",
+            "Age Group": product.ageGroup || "",
+            "Status": product.status || "pending"
+          }));
+          break;
+
+        case "zigzag":
+          filename = "zigzag_products.csv";
+          headers = [
+            "제품명", "제품설명", "가격", "할인전가격", "대표사진", "추가사진",
+            "카테고리", "세부카테고리", "브랜드명", "소스링크", "제품번호", 
+            "해시태그", "계절", "성별구분", "타겟연령", "상품상태"
+          ];
+          csvData = products.map(product => ({
+            "제품명": product.name,
+            "제품설명": product.description || "",
+            "가격": product.price,
+            "할인전가격": product.originalPrice || product.price,
+            "대표사진": product.imageUrl || "",
+            "추가사진": product.imageUrls ? product.imageUrls.join(",") : "",
+            "카테고리": product.category || "",
+            "세부카테고리": product.subcategory || "",
+            "브랜드명": product.brand || "",
+            "소스링크": product.sourceUrl || "",
+            "제품번호": product.sourceProductId || "",
+            "해시태그": product.tags ? product.tags.join(" #") : "",
+            "계절": product.season || "",
+            "성별구분": product.gender || "",
+            "타겟연령": product.ageGroup || "",
+            "상품상태": product.status || "pending"
+          }));
+          break;
+
+        case "stylehub":
+          filename = "stylehub_custom.csv";
+          // 사용자 정의 컬럼 (쿼리 파라미터로 전달)
+          const selectedColumns = columns ? (columns as string).split(',') : [
+            'name', 'description', 'price', 'originalPrice', 'imageUrl', 'category', 'brand'
+          ];
+          
+          const columnMapping: { [key: string]: string } = {
+            'name': '상품명',
+            'description': '상품설명', 
+            'price': '판매가',
+            'originalPrice': '정가',
+            'imageUrl': '이미지URL',
+            'imageUrls': '추가이미지들',
+            'category': '카테고리',
+            'subcategory': '서브카테고리',
+            'brand': '브랜드',
+            'source': '수집소스',
+            'sourceUrl': '원본URL',
+            'sourceProductId': '원본상품ID',
+            'tags': '태그',
+            'season': '시즌',
+            'gender': '성별',
+            'ageGroup': '연령대',
+            'status': '상태',
+            'createdAt': '등록일',
+            'updatedAt': '수정일'
+          };
+
+          headers = selectedColumns.map(col => columnMapping[col] || col);
+          csvData = products.map(product => {
+            const row: any = {};
+            selectedColumns.forEach(col => {
+              switch (col) {
+                case 'imageUrls':
+                  row[columnMapping[col]] = product.imageUrls ? product.imageUrls.join(',') : '';
+                  break;
+                case 'tags':
+                  row[columnMapping[col]] = product.tags ? product.tags.join(',') : '';
+                  break;
+                case 'createdAt':
+                  row[columnMapping[col]] = product.createdAt ? new Date(product.createdAt).toLocaleDateString('ko-KR') : '';
+                  break;
+                case 'updatedAt':
+                  row[columnMapping[col]] = product.updatedAt ? new Date(product.updatedAt).toLocaleDateString('ko-KR') : '';
+                  break;
+                default:
+                  row[columnMapping[col]] = (product as any)[col] || '';
+              }
+            });
+            return row;
+          });
+          break;
+
+        default:
+          return res.status(400).json({ message: "지원하지 않는 마켓플레이스입니다." });
+      }
+
+      // CSV 생성
+      let csvContent = headers.join(",") + "\n";
+      
+      csvData.forEach(row => {
+        const values = headers.map(header => {
+          const value = row[header] || "";
+          // CSV 특수문자 처리
+          if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        });
+        csvContent += values.join(",") + "\n";
+      });
+
+      // 파일 다운로드 응답
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      // UTF-8 BOM 추가 (Excel에서 한글 깨짐 방지)
+      res.write('\uFEFF');
+      res.end(csvContent, 'utf8');
+
+    } catch (error: any) {
+      console.error('CSV 다운로드 에러:', error);
+      res.status(500).json({ message: "CSV 다운로드 중 오류가 발생했습니다." });
+    }
+  });
+
+  // 스타일허브 커스텀 컬럼 CSV 다운로드 (POST 방식)
+  app.post("/api/products/csv/stylehub", requireAuth, async (req, res) => {
+    try {
+      const { columns } = req.body;
+      
+      if (!columns || !Array.isArray(columns) || columns.length === 0) {
+        return res.status(400).json({ message: '선택된 컬럼이 없습니다.' });
+      }
+
+      const products = await storage.getProducts(1000); // 최대 1000개 제품
+      
+      if (!products || products.length === 0) {
+        return res.status(404).json({ message: "다운로드할 상품이 없습니다." });
+      }
+
+      // 한글 헤더 매핑
+      const koreanHeaders: { [key: string]: string } = {
+        'id': 'ID',
+        'name': '상품명',
+        'description': '상품설명',
+        'price': '판매가',
+        'originalPrice': '정가',
+        'imageUrl': '이미지URL',
+        'imageUrls': '추가이미지들',
+        'category': '카테고리',
+        'subcategory': '서브카테고리',
+        'brand': '브랜드',
+        'source': '수집소스',
+        'sourceUrl': '원본URL',
+        'sourceProductId': '원본상품ID',
+        'tags': '태그',
+        'season': '시즌',
+        'gender': '성별',
+        'ageGroup': '연령대',
+        'status': '상태',
+        'createdAt': '등록일',
+        'updatedAt': '수정일'
+      };
+
+      // 선택된 컬럼에 대한 한글 헤더 생성
+      const csvHeaders = columns.map(col => koreanHeaders[col] || col);
+
+      // CSV 데이터 생성
+      const csvData = products.map(product => columns.map(header => {
+        let value = (product as any)[header];
+        
+        // 날짜 포맷팅
+        if ((header === 'createdAt' || header === 'updatedAt') && value) {
+          value = new Date(value).toLocaleDateString('ko-KR');
+        }
+        
+        // 배열인 경우 콤마로 연결
+        if (Array.isArray(value)) {
+          value = value.join('; ');
+        }
+        
+        // 문자열에 콤마나 따옴표가 있으면 따옴표로 감싸기
+        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+          value = `"${value.replace(/"/g, '""')}"`;
+        }
+        
+        return value || '';
+      }));
+
+      // CSV 문자열 생성
+      const csvContent = [
+        csvHeaders.join(','),
+        ...csvData.map(row => row.join(','))
+      ].join('\n');
+
+      // CSV 파일로 응답
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="stylehub_custom_products.csv"');
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      // UTF-8 BOM 추가 (Excel에서 한글 깨짐 방지)
+      res.write('\uFEFF');
+      res.end(csvContent, 'utf8');
+
+    } catch (error: any) {
+      console.error('스타일허브 커스텀 CSV 생성 에러:', error);
+      res.status(500).json({ message: '커스텀 CSV 다운로드 중 오류가 발생했습니다.' });
+    }
+  });
+
   // CSV 샘플 다운로드 (반드시 :id 라우트보다 먼저 정의)
   app.get("/api/products/csv-sample", requireAuth, requireAdmin, (req, res) => {
     try {
