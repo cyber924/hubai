@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AdminSidebar from "@/components/admin-sidebar";
 import ProductDetailModal from "@/components/ProductDetailModal";
+import ProductEditModal from "@/components/ProductEditModal";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -25,6 +26,7 @@ export default function ProductManagement() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
@@ -104,11 +106,16 @@ export default function ProductManagement() {
 
   const handleEditProduct = (product: Product) => {
     setSelectedProduct(product);
-    setIsDetailModalOpen(true);
+    setIsEditModalOpen(true);
   };
 
   const handleCloseDetailModal = () => {
     setIsDetailModalOpen(false);
+    setSelectedProduct(null);
+  };
+
+  const handleCloseEditModal = () => {
+    setIsEditModalOpen(false);
     setSelectedProduct(null);
   };
 
@@ -530,8 +537,20 @@ export default function ProductManagement() {
         open={isDetailModalOpen}
         onClose={handleCloseDetailModal}
         onEdit={(product) => {
-          // 수정 로직 구현 필요
-          console.log('Edit product:', product);
+          setIsDetailModalOpen(false);
+          setSelectedProduct(product);
+          setIsEditModalOpen(true);
+        }}
+      />
+
+      {/* Product Edit Modal */}
+      <ProductEditModal
+        product={selectedProduct}
+        open={isEditModalOpen}
+        onClose={handleCloseEditModal}
+        onSuccess={() => {
+          refetch();
+          handleCloseEditModal();
         }}
       />
     </div>
