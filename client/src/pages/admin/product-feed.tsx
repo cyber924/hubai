@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import AdminSidebar from "@/components/admin-sidebar";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -14,12 +15,13 @@ import {
   Eye,
   RefreshCw,
   Bot,
-  ExternalLink 
+  ExternalLink
 } from "lucide-react";
 
 export default function ProductFeed() {
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -51,10 +53,65 @@ export default function ProductFeed() {
     },
   });
 
+  // 대량 삭제 mutation
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (productIds: string[]) => {
+      // 각 상품을 개별적으로 삭제 (나중에 백엔드에서 대량 삭제 API로 최적화 가능)
+      for (const id of productIds) {
+        await api.deleteProduct(id);
+      }
+    },
+    onSuccess: (_, productIds) => {
+      toast({
+        title: "성공",
+        description: `${productIds.length}개 상품이 삭제되었습니다.`,
+      });
+      setSelectedProducts([]);
+      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+    },
+    onError: () => {
+      toast({
+        title: "오류",
+        description: "상품 삭제에 실패했습니다.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleDeleteProduct = (id: string) => {
     if (confirm('이 상품을 삭제하시겠습니까?')) {
       deleteProductMutation.mutate(id);
     }
+  };
+
+  // 선택 관련 함수들
+  const handleSelectAll = () => {
+    if (selectedProducts.length === products?.length) {
+      setSelectedProducts([]);
+    } else {
+      setSelectedProducts(products?.map((p: any) => p.id) || []);
+    }
+  };
+
+  const handleSelectProduct = (productId: string) => {
+    setSelectedProducts(prev => 
+      prev.includes(productId) 
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedProducts.length === 0) return;
+    
+    if (confirm(`선택한 ${selectedProducts.length}개 상품을 삭제하시겠습니까?`)) {
+      bulkDeleteMutation.mutate(selectedProducts);
+    }
+  };
+
+  const handleSelectTop = (count: number) => {
+    const topProducts = products?.slice(0, count).map((p: any) => p.id) || [];
+    setSelectedProducts(topProducts);
   };
 
   const getStatusBadge = (status: string) => {
@@ -174,12 +231,80 @@ export default function ProductFeed() {
           {/* Products Table */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <CardTitle className="korean-text">상품 목록</CardTitle>
                 <div className="text-sm text-muted-foreground korean-text">
                   총 {products?.length || 0}개 상품
                 </div>
               </div>
+              
+              {/* 선택 및 대량 삭제 컨트롤 */}
+              {products && products.length > 0 && (
+                <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={selectedProducts.length === products.length && products.length > 0}
+                        onCheckedChange={handleSelectAll}
+                        data-testid="checkbox-select-all"
+                      />
+                      <span className="text-sm font-medium korean-text">
+                        전체 선택 ({selectedProducts.length}/{products.length})
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSelectTop(50)}
+                        disabled={products.length === 0}
+                        data-testid="button-select-top-50"
+                        className="korean-text"
+                      >
+                        상위 50개 선택
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSelectTop(100)}
+                        disabled={products.length === 0}
+                        data-testid="button-select-top-100"
+                        className="korean-text"
+                      >
+                        상위 100개 선택
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    {selectedProducts.length > 0 && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedProducts([])}
+                          data-testid="button-clear-selection"
+                          className="korean-text"
+                        >
+                          선택 해제
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={handleBulkDelete}
+                          disabled={bulkDeleteMutation.isPending}
+                          data-testid="button-bulk-delete"
+                          className="korean-text"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          선택 삭제 ({selectedProducts.length})
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -200,6 +325,13 @@ export default function ProductFeed() {
                 <div className="space-y-4">
                   {products.map((product: any) => (
                     <div key={product.id} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                      {/* Selection Checkbox */}
+                      <Checkbox
+                        checked={selectedProducts.includes(product.id)}
+                        onCheckedChange={() => handleSelectProduct(product.id)}
+                        data-testid={`checkbox-product-${product.id}`}
+                      />
+                      
                       {/* Product Image */}
                       {product.imageUrl ? (
                         <img 
