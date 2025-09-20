@@ -86,6 +86,21 @@ export const productInventory = pgTable("product_inventory", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const registrationJobs = pgTable("registration_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  totalProducts: integer("total_products").notNull().default(0),
+  pendingCount: integer("pending_count").notNull().default(0),
+  processingCount: integer("processing_count").notNull().default(0),
+  completedCount: integer("completed_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  status: text("status").default("pending"), // pending, running, completed, failed
+  productIds: jsonb("product_ids").notNull(), // Array of product IDs to register
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -128,6 +143,12 @@ export const insertInventorySchema = createInsertSchema(productInventory).omit({
   updatedAt: true,
 });
 
+export const insertRegistrationJobSchema = createInsertSchema(registrationJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Product = typeof products.$inferSelect;
@@ -140,3 +161,5 @@ export type ProductOption = typeof productOptions.$inferSelect;
 export type InsertProductOption = z.infer<typeof insertProductOptionSchema>;
 export type Inventory = typeof productInventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
+export type RegistrationJob = typeof registrationJobs.$inferSelect;
+export type InsertRegistrationJob = z.infer<typeof insertRegistrationJobSchema>;
