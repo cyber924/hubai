@@ -46,10 +46,96 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
   next();
 };
 
+// Registration job processing function
+async function processRegistrationJob(jobId: string) {
+  try {
+    const job = await storage.getRegistrationJob(jobId);
+    if (!job) {
+      console.error("Registration job not found:", jobId);
+      return;
+    }
+
+    // Update job status to running
+    await storage.updateRegistrationJob(jobId, { 
+      status: "running",
+      processingCount: job.pendingCount,
+      pendingCount: 0
+    });
+
+    const productIds = Array.isArray(job.productIds) ? job.productIds : JSON.parse(job.productIds as string);
+    let completedCount = 0;
+    let failedCount = 0;
+
+    // Process each product
+    for (const productId of productIds) {
+      try {
+        // Simulate registration process (1-2 seconds per product)
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+        
+        // Update product status to registered
+        await storage.updateProduct(productId, { 
+          status: "registered"
+        });
+        
+        completedCount++;
+        
+        // Update job progress
+        await storage.updateRegistrationJob(jobId, {
+          processingCount: job.totalProducts - completedCount - failedCount,
+          completedCount,
+          failedCount
+        });
+        
+      } catch (error) {
+        console.error(`Failed to register product ${productId}:`, error);
+        failedCount++;
+        
+        // Update job progress with failure
+        await storage.updateRegistrationJob(jobId, {
+          processingCount: job.totalProducts - completedCount - failedCount,
+          completedCount,
+          failedCount
+        });
+      }
+    }
+
+    // Complete the job
+    const finalStatus = failedCount === 0 ? "completed" : (completedCount > 0 ? "completed" : "failed");
+    await storage.updateRegistrationJob(jobId, {
+      status: finalStatus,
+      processingCount: 0,
+      completedCount,
+      failedCount,
+      errorMessage: failedCount > 0 ? `${failedCount} products failed to register` : null
+    });
+
+    console.log(`Registration job ${jobId} completed: ${completedCount} success, ${failedCount} failed`);
+    
+  } catch (error) {
+    console.error("Failed to process registration job:", error);
+    try {
+      await storage.updateRegistrationJob(jobId, {
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Unknown error"
+      });
+    } catch (updateError) {
+      console.error("Failed to update job status to failed:", updateError);
+    }
+  }
+}
+
 // Validation schemas
 const adminUserUpdateSchema = z.object({
   isAdmin: z.boolean().optional(),
   subscriptionPlan: z.enum(["free", "starter", "pro", "enterprise"]).optional(),
+});
+
+const singleRegistrationSchema = z.object({
+  productId: z.string().min(1, "Product ID is required")
+});
+
+const selectedRegistrationSchema = z.object({
+  productIds: z.array(z.string().min(1)).min(1, "At least one product ID is required")
 });
 
 // Multer setup for file uploads
@@ -982,6 +1068,165 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       res.status(500).json({ message: "Failed to update user: " + error.message });
+    }
+  });
+
+  // Registration job routes
+  app.get("/api/registration/jobs", requireAuth, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const allJobs = await storage.getRegistrationJobs(limit);
+      // Filter jobs by current user (security fix)
+      const userJobs = allJobs.filter(job => job.createdBy === (req as any).user.id);
+      res.json(userJobs);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get registration jobs: " + error.message });
+    }
+  });
+
+  app.get("/api/registration/jobs/:id", requireAuth, async (req, res) => {
+    try {
+      const job = await storage.getRegistrationJob(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: "Registration job not found" });
+      }
+      // Security check: user can only see their own jobs
+      if (job.createdBy !== (req as any).user.id && !(req as any).user.isAdmin) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      res.json(job);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get registration job: " + error.message });
+    }
+  });
+
+  app.post("/api/registration/single", requireAuth, async (req, res) => {
+    try {
+      // Validate input
+      const validation = singleRegistrationSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid input", 
+          errors: validation.error.flatten().fieldErrors 
+        });
+      }
+      
+      const { productId } = validation.data;
+
+      const product = await storage.getProduct(productId);
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      if (product.status === "registered") {
+        return res.status(400).json({ message: "Product is already registered" });
+      }
+
+      const job = await storage.createRegistrationJob({
+        createdBy: (req as any).user.id,
+        productIds: [productId],
+        totalProducts: 1,
+        pendingCount: 1,
+        processingCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        status: "pending"
+      });
+
+      // Start processing asynchronously
+      processRegistrationJob(job.id);
+
+      res.json({ 
+        message: "Registration job created",
+        job: job
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create registration job: " + error.message });
+    }
+  });
+
+  app.post("/api/registration/selected", requireAuth, async (req, res) => {
+    try {
+      // Validate input
+      const validation = selectedRegistrationSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid input", 
+          errors: validation.error.flatten().fieldErrors 
+        });
+      }
+      
+      const { productIds } = validation.data;
+
+      // Validate all products exist and are not already registered
+      const products = await Promise.all(
+        productIds.map(id => storage.getProduct(id))
+      );
+      
+      const validProducts = products.filter(p => p && p.status !== "registered");
+      if (validProducts.length === 0) {
+        return res.status(400).json({ 
+          message: "No valid products found for registration" 
+        });
+      }
+
+      const job = await storage.createRegistrationJob({
+        createdBy: (req as any).user.id,
+        productIds: validProducts.map(p => p!.id),
+        totalProducts: validProducts.length,
+        pendingCount: validProducts.length,
+        processingCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        status: "pending"
+      });
+
+      // Start processing asynchronously
+      processRegistrationJob(job.id);
+
+      res.json({ 
+        message: "Registration job created",
+        job: job,
+        validProductsCount: validProducts.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create registration job: " + error.message });
+    }
+  });
+
+  app.post("/api/registration/bulk", requireAuth, async (req, res) => {
+    try {
+      // Get all unregistered products
+      const allProducts = await storage.getProducts();
+      const unregisteredProducts = allProducts.filter(p => p.status !== "registered");
+      
+      if (unregisteredProducts.length === 0) {
+        return res.status(400).json({ 
+          message: "No products available for registration" 
+        });
+      }
+
+      const job = await storage.createRegistrationJob({
+        createdBy: (req as any).user.id,
+        productIds: unregisteredProducts.map(p => p.id),
+        totalProducts: unregisteredProducts.length,
+        pendingCount: unregisteredProducts.length,
+        processingCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        status: "pending"
+      });
+
+      // Start processing asynchronously
+      processRegistrationJob(job.id);
+
+      res.json({ 
+        message: "Bulk registration job created",
+        job: job,
+        totalProducts: unregisteredProducts.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create bulk registration job: " + error.message });
     }
   });
 
