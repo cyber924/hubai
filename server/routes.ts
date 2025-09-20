@@ -1545,11 +1545,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `scope=${encodeURIComponent('mall.read_product mall.write_product')}`;
 
-      console.log('Generated OAuth URL:', authUrl);
-      console.log('Redirect URI:', redirectUri);
-      console.log('Client ID:', clientId);
-      console.log('Mall ID:', mallId);
-
       res.json({ authUrl });
     } catch (error: any) {
       res.status(500).json({ message: "OAuth URL 생성 실패: " + error.message });
