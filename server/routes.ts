@@ -625,8 +625,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const productData = {
                   name: row.name || `Product ${index + 1}`,
                   description: row.description || '',
-                  price: row.price ? parseFloat(row.price.toString()) : 0,
-                  originalPrice: row.originalPrice ? parseFloat(row.originalPrice.toString()) : null,
+                  price: row.price ? row.price.toString() : "0",
+                  originalPrice: row.originalPrice ? row.originalPrice.toString() : null,
                   imageUrl: row.imageUrl || null,
                   imageUrls: row.imageUrls ? row.imageUrls.split(',').map((url: string) => url.trim()) : [],
                   category: row.category || null,
