@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, type RegistrationJob, type InsertRegistrationJob, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory, registrationJobs } from "@shared/schema";
+import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, type RegistrationJob, type InsertRegistrationJob, type MarketplaceConnection, type InsertMarketplaceConnection, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory, registrationJobs, marketplaceConnections } from "@shared/schema";
 
 // AI Optimization types (메모리 기반으로 구현)
 type OptimizationJob = {
@@ -30,7 +30,7 @@ type OptimizationSuggestion = {
 import { randomUUID } from "crypto";
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql, and } from 'drizzle-orm';
 
 export interface IStorage {
   // User operations
@@ -94,6 +94,14 @@ export interface IStorage {
   createOptimizationSuggestion(suggestion: Omit<OptimizationSuggestion, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationSuggestion>;
   updateOptimizationSuggestion(id: string, updates: Partial<OptimizationSuggestion>): Promise<OptimizationSuggestion>;
 
+  // Marketplace connection operations
+  getMarketplaceConnections(userId: string): Promise<MarketplaceConnection[]>;
+  getMarketplaceConnection(id: string): Promise<MarketplaceConnection | undefined>;
+  getMarketplaceConnectionByProvider(userId: string, provider: string): Promise<MarketplaceConnection | undefined>;
+  createMarketplaceConnection(connection: InsertMarketplaceConnection): Promise<MarketplaceConnection>;
+  updateMarketplaceConnection(id: string, updates: Partial<MarketplaceConnection>): Promise<MarketplaceConnection>;
+  deleteMarketplaceConnection(id: string): Promise<void>;
+
   // Statistics
   getProductStats(): Promise<{
     total: number;
@@ -119,6 +127,7 @@ export class MemStorage implements IStorage {
   private registrationJobs: Map<string, RegistrationJob>;
   private optimizationJobs: Map<string, OptimizationJob>;
   private optimizationSuggestions: Map<string, OptimizationSuggestion>;
+  private marketplaceConnections: Map<string, MarketplaceConnection>;
 
   constructor() {
     this.users = new Map();
@@ -130,6 +139,7 @@ export class MemStorage implements IStorage {
     this.registrationJobs = new Map();
     this.optimizationJobs = new Map();
     this.optimizationSuggestions = new Map();
+    this.marketplaceConnections = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -534,6 +544,56 @@ export class MemStorage implements IStorage {
     this.optimizationSuggestions.set(id, updatedSuggestion);
     return updatedSuggestion;
   }
+
+  // Marketplace connection operations
+  async getMarketplaceConnections(userId: string): Promise<MarketplaceConnection[]> {
+    return Array.from(this.marketplaceConnections.values())
+      .filter(connection => connection.userId === userId)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async getMarketplaceConnection(id: string): Promise<MarketplaceConnection | undefined> {
+    return this.marketplaceConnections.get(id);
+  }
+
+  async getMarketplaceConnectionByProvider(userId: string, provider: string): Promise<MarketplaceConnection | undefined> {
+    return Array.from(this.marketplaceConnections.values())
+      .find(connection => connection.userId === userId && connection.provider === provider);
+  }
+
+  async createMarketplaceConnection(insertConnection: InsertMarketplaceConnection): Promise<MarketplaceConnection> {
+    const id = randomUUID();
+    const connection: MarketplaceConnection = {
+      ...insertConnection,
+      id,
+      shopId: insertConnection.shopId ?? null,
+      shopDomain: insertConnection.shopDomain ?? null,
+      accessToken: insertConnection.accessToken ?? null,
+      refreshToken: insertConnection.refreshToken ?? null,
+      expiresAt: insertConnection.expiresAt ?? null,
+      apiKey: insertConnection.apiKey ?? null,
+      status: insertConnection.status ?? "active",
+      lastSynced: insertConnection.lastSynced ?? null,
+      errorMessage: insertConnection.errorMessage ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.marketplaceConnections.set(id, connection);
+    return connection;
+  }
+
+  async updateMarketplaceConnection(id: string, updates: Partial<MarketplaceConnection>): Promise<MarketplaceConnection> {
+    const connection = this.marketplaceConnections.get(id);
+    if (!connection) throw new Error("Marketplace connection not found");
+    
+    const updatedConnection = { ...connection, ...updates, updatedAt: new Date() };
+    this.marketplaceConnections.set(id, updatedConnection);
+    return updatedConnection;
+  }
+
+  async deleteMarketplaceConnection(id: string): Promise<void> {
+    this.marketplaceConnections.delete(id);
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -923,6 +983,58 @@ export class DatabaseStorage implements IStorage {
     const updatedSuggestion = { ...suggestion, ...updates, updatedAt: new Date() };
     this.optimizationSuggestions.set(id, updatedSuggestion);
     return updatedSuggestion;
+  }
+
+  // Marketplace connection operations
+  async getMarketplaceConnections(userId: string): Promise<MarketplaceConnection[]> {
+    return await this.db.select().from(marketplaceConnections)
+      .where(eq(marketplaceConnections.userId, userId))
+      .orderBy(desc(marketplaceConnections.createdAt));
+  }
+
+  async getMarketplaceConnection(id: string): Promise<MarketplaceConnection | undefined> {
+    const result = await this.db.select().from(marketplaceConnections)
+      .where(eq(marketplaceConnections.id, id));
+    return result[0];
+  }
+
+  async getMarketplaceConnectionByProvider(userId: string, provider: string): Promise<MarketplaceConnection | undefined> {
+    const result = await this.db.select().from(marketplaceConnections)
+      .where(and(
+        eq(marketplaceConnections.userId, userId),
+        eq(marketplaceConnections.provider, provider)
+      ));
+    return result[0];
+  }
+
+  async createMarketplaceConnection(insertConnection: InsertMarketplaceConnection): Promise<MarketplaceConnection> {
+    const result = await this.db.insert(marketplaceConnections).values({
+      ...insertConnection,
+      shopId: insertConnection.shopId ?? null,
+      shopDomain: insertConnection.shopDomain ?? null,
+      accessToken: insertConnection.accessToken ?? null,
+      refreshToken: insertConnection.refreshToken ?? null,
+      expiresAt: insertConnection.expiresAt ?? null,
+      apiKey: insertConnection.apiKey ?? null,
+      status: insertConnection.status ?? "active",
+      lastSynced: insertConnection.lastSynced ?? null,
+      errorMessage: insertConnection.errorMessage ?? null
+    }).returning();
+    return result[0];
+  }
+
+  async updateMarketplaceConnection(id: string, updates: Partial<MarketplaceConnection>): Promise<MarketplaceConnection> {
+    const result = await this.db.update(marketplaceConnections)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(marketplaceConnections.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Marketplace connection not found");
+    return result[0];
+  }
+
+  async deleteMarketplaceConnection(id: string): Promise<void> {
+    await this.db.delete(marketplaceConnections)
+      .where(eq(marketplaceConnections.id, id));
   }
 }
 
