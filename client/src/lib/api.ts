@@ -92,6 +92,28 @@ export const api = {
     return apiRequest('POST', '/api/marketplace-syncs', data);
   },
 
+  // Registration operations
+  async registerSelectedProducts(productIds: string[]) {
+    return apiRequest('POST', '/api/registration/selected', { productIds });
+  },
+
+  async registerAllProducts() {
+    return apiRequest('POST', '/api/registration/bulk');
+  },
+
+  async getRegistrationJobs(limit?: number) {
+    const url = `/api/registration/jobs${limit ? `?limit=${limit}` : ''}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch registration jobs');
+    return response.json();
+  },
+
+  async getRegistrationJob(id: string) {
+    const response = await fetch(`/api/registration/jobs/${id}`);
+    if (!response.ok) throw new Error('Failed to fetch registration job');
+    return response.json();
+  },
+
   // Subscription operations
   async createSubscription() {
     return apiRequest('POST', '/api/get-or-create-subscription');

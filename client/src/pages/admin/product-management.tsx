@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AdminSidebar from "@/components/admin-sidebar";
 import ProductDetailModal from "@/components/ProductDetailModal";
@@ -18,7 +19,10 @@ import {
   Download,
   ShoppingCart,
   Eye,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Check,
+  Square,
+  CheckSquare
 } from "lucide-react";
 import type { Product } from "@shared/schema";
 
@@ -29,6 +33,8 @@ export default function ProductManagement() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [isRegistering, setIsRegistering] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -84,11 +90,24 @@ export default function ProductManagement() {
     });
   };
 
-  const handleRegisterToStore = (productId: string) => {
-    updateProductMutation.mutate({
-      id: productId,
-      updates: { status: "registered" }
-    });
+  const handleRegisterToStore = async (productId: string) => {
+    setIsRegistering(true);
+    try {
+      const response = await api.registerSelectedProducts([productId]);
+      toast({
+        title: "등록 작업 시작",
+        description: "상품 등록이 시작되었습니다.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+    } catch (error) {
+      toast({
+        title: "등록 실패",
+        description: "상품 등록에 실패했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   const handleSyncToMarketplace = (productId: string, marketplace: string) => {
@@ -117,6 +136,85 @@ export default function ProductManagement() {
   const handleCloseEditModal = () => {
     setIsEditModalOpen(false);
     setSelectedProduct(null);
+  };
+
+  // Selection functions
+  const handleProductSelect = (productId: string, checked: boolean) => {
+    const newSelection = new Set(selectedProductIds);
+    if (checked) {
+      newSelection.add(productId);
+    } else {
+      newSelection.delete(productId);
+    }
+    setSelectedProductIds(newSelection);
+  };
+
+  const handleSelectAll = () => {
+    const analyzedProducts = products?.filter((p: any) => p.status === "analyzed") || [];
+    const allIds = analyzedProducts.map((p: any) => p.id);
+    setSelectedProductIds(new Set(allIds));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedProductIds(new Set());
+  };
+
+  // Registration functions
+  const handleRegisterSelected = async () => {
+    if (selectedProductIds.size === 0) {
+      toast({
+        title: "선택된 상품이 없습니다",
+        description: "등록할 상품을 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedIds = Array.from(selectedProductIds);
+    console.log("등록할 상품 IDs:", selectedIds);
+    console.log("선택된 상품들:", selectedIds.map(id => products?.find((p: any) => p.id === id)?.name || id));
+
+    setIsRegistering(true);
+    try {
+      const response = await api.registerSelectedProducts(selectedIds);
+      console.log("등록 응답:", response);
+      toast({
+        title: "등록 작업 시작",
+        description: `${selectedProductIds.size}개 상품 등록이 시작되었습니다.`,
+      });
+      setSelectedProductIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+    } catch (error) {
+      console.error("등록 에러:", error);
+      toast({
+        title: "등록 실패",
+        description: "선택된 상품 등록에 실패했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  const handleRegisterAll = async () => {
+    setIsRegistering(true);
+    try {
+      const response = await api.registerAllProducts();
+      toast({
+        title: "전체 등록 작업 시작",
+        description: "모든 상품 등록이 시작되었습니다.",
+      });
+      setSelectedProductIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+    } catch (error) {
+      toast({
+        title: "등록 실패",
+        description: "전체 상품 등록에 실패했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,6 +325,11 @@ export default function ProductManagement() {
       });
     }
   };
+
+  // Clear selection when filter changes
+  useEffect(() => {
+    setSelectedProductIds(new Set());
+  }, [statusFilter]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -405,7 +508,70 @@ export default function ProductManagement() {
           {/* Products List */}
           <Card>
             <CardHeader>
-              <CardTitle className="korean-text">상품 목록</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="korean-text">상품 목록</CardTitle>
+                <div className="flex items-center space-x-2">
+                  {products && products.length > 0 && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={selectedProductIds.size === 0 ? handleSelectAll : handleDeselectAll}
+                        className="korean-text"
+                        data-testid="button-select-all"
+                      >
+                        {selectedProductIds.size === 0 ? (
+                          <>
+                            <CheckSquare className="mr-2 h-4 w-4" />
+                            전체선택
+                          </>
+                        ) : (
+                          <>
+                            <Square className="mr-2 h-4 w-4" />
+                            선택해제
+                          </>
+                        )}
+                      </Button>
+                      
+                      {selectedProductIds.size > 0 && (
+                        <>
+                          <span className="text-sm text-muted-foreground korean-text">
+                            {selectedProductIds.size}개 선택됨
+                          </span>
+                          <Button
+                            onClick={handleRegisterSelected}
+                            disabled={isRegistering}
+                            className="korean-text"
+                            data-testid="button-register-selected"
+                          >
+                            {isRegistering ? (
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <ShoppingCart className="mr-2 h-4 w-4" />
+                            )}
+                            선택 등록
+                          </Button>
+                        </>
+                      )}
+                      
+                      <Button
+                        variant="secondary"
+                        onClick={handleRegisterAll}
+                        disabled={isRegistering || analyzedProducts.length === 0}
+                        className="korean-text"
+                        data-testid="button-register-all"
+                      >
+                        {isRegistering ? (
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="mr-2 h-4 w-4" />
+                        )}
+                        전체 등록 ({analyzedProducts.length}개)
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -425,6 +591,16 @@ export default function ProductManagement() {
                 <div className="space-y-4">
                   {products.map((product: any) => (
                     <div key={product.id} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                      {/* Checkbox for selection */}
+                      {product.status === "analyzed" && (
+                        <Checkbox
+                          checked={selectedProductIds.has(product.id)}
+                          onCheckedChange={(checked) => handleProductSelect(product.id, checked as boolean)}
+                          className="h-4 w-4"
+                          data-testid={`checkbox-product-${product.id}`}
+                        />
+                      )}
+                      
                       {/* Product Image */}
                       {product.imageUrl ? (
                         <img 
