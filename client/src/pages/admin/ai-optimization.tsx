@@ -340,7 +340,7 @@ export default function AIOptimization() {
                           ))}
                         </div>
 
-                        {suggestion.aiAnalysis && typeof suggestion.aiAnalysis === 'object' && (
+                        {suggestion.aiAnalysis && typeof suggestion.aiAnalysis === 'object' ? (
                           <div className="space-y-2 mt-3 pt-3 border-t">
                             <div className="font-medium korean-text">AI 분석 결과</div>
                             <div className="grid grid-cols-3 gap-4 text-sm">
@@ -367,17 +367,17 @@ export default function AIOptimization() {
                               <div className="mt-2">
                                 <div className="text-sm font-medium korean-text">개선 제안:</div>
                                 <ul className="text-sm text-muted-foreground mt-1 space-y-1">
-                                  {(suggestion.aiAnalysis as any).suggestions.map((item: string, idx: number) => (
+                                  {(suggestion.aiAnalysis as any).suggestions.map((item: any, idx: number) => (
                                     <li key={idx} className="flex items-center gap-2">
                                       <TrendingUp className="h-3 w-3" />
-                                      {item}
+                                      {String(item)}
                                     </li>
                                   ))}
                                 </ul>
                               </div>
                             )}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -408,7 +408,7 @@ export default function AIOptimization() {
                       data-testid={`job-${job.id || 'unknown'}`}
                     >
                       <div className="flex items-center gap-3">
-                        {getStatusIcon(job.status)}
+                        {getStatusIcon(job.status || 'pending')}
                         <div>
                           <div className="font-medium">
                             {job.totalProducts}개 상품 최적화
@@ -419,7 +419,7 @@ export default function AIOptimization() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${getStatusColor(job.status)}`} />
+                        <div className={`w-2 h-2 rounded-full ${getStatusColor(job.status || 'pending')}`} />
                         <Badge variant="secondary">{calculateProgress(job)}%</Badge>
                       </div>
                     </div>

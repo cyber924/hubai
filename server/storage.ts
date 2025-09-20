@@ -447,6 +447,11 @@ export class MemStorage implements IStorage {
     const job: RegistrationJob = {
       ...insertJob,
       id,
+      totalProducts: insertJob.totalProducts ?? 0,
+      pendingCount: insertJob.pendingCount ?? 0,
+      processingCount: insertJob.processingCount ?? 0,
+      completedCount: insertJob.completedCount ?? 0,
+      failedCount: insertJob.failedCount ?? 0,
       status: insertJob.status ?? "pending",
       errorMessage: null,
       createdAt: new Date(),
@@ -832,6 +837,11 @@ export class DatabaseStorage implements IStorage {
     const job: RegistrationJob = {
       ...insertJob,
       id,
+      totalProducts: insertJob.totalProducts ?? 0,
+      pendingCount: insertJob.pendingCount ?? 0,
+      processingCount: insertJob.processingCount ?? 0,
+      completedCount: insertJob.completedCount ?? 0,
+      failedCount: insertJob.failedCount ?? 0,
       status: insertJob.status ?? "pending",
       errorMessage: null,
       createdAt: new Date(),
