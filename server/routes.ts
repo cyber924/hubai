@@ -1530,8 +1530,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ message: "카페24 설정이 필요합니다." });
       }
 
-      // Generate cryptographically secure state parameter for CSRF protection
-      const state = crypto.randomBytes(16).toString('hex');
+      // Generate cryptographically secure state parameter for CSRF protection with user ID
+      const stateData = {
+        userId: (req as any).user.id,
+        nonce: crypto.randomBytes(16).toString('hex')
+      };
+      const state = Buffer.from(JSON.stringify(stateData)).toString('base64');
       
       // Store state in session for verification
       (req as any).session.cafe24_oauth_state = state;
@@ -1557,29 +1561,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/marketplace/cafe24/callback", requireAuth, async (req, res) => {
+  app.get("/api/marketplace/cafe24/callback", async (req, res) => {
     try {
       const code = String(req.query.code || '');
       const state = String(req.query.state || '');
       
       if (!code || !state) {
-        return res.status(400).json({ message: "인증 코드 또는 state가 누락되었습니다." });
+        return res.redirect('/market-sync?error=invalid_callback');
       }
 
-      // Verify state parameter
-      if (state !== (req as any).session.cafe24_oauth_state) {
-        return res.status(400).json({ message: "잘못된 state 파라미터입니다." });
+      // Parse state parameter to get user ID
+      let stateData;
+      try {
+        stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
+      } catch (error) {
+        return res.redirect('/market-sync?error=invalid_state');
       }
 
-      // Clear state from session
-      delete (req as any).session.cafe24_oauth_state;
+      if (!stateData.userId) {
+        return res.redirect('/market-sync?error=missing_user_info');
+      }
 
       const clientId = process.env.CAFE24_CLIENT_ID;
       const clientSecret = process.env.CAFE24_CLIENT_SECRET;
       const mallId = process.env.CAFE24_MALL_ID;
       
       if (!clientId || !clientSecret || !mallId) {
-        return res.status(500).json({ message: "카페24 설정이 완전하지 않습니다." });
+        return res.redirect('/market-sync?error=config_missing');
       }
 
       // 배포 환경 vs 개발 환경 구분
@@ -1606,16 +1614,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
-        return res.status(400).json({ message: "토큰 교환 실패: " + errorText });
+        console.error("Token exchange failed:", errorText);
+        return res.redirect('/market-sync?error=token_exchange_failed');
       }
 
       const tokenData = await tokenResponse.json();
       
       // Check if user already has a Cafe24 connection
-      const existingConnection = await storage.getMarketplaceConnectionByProvider((req as any).user.id, "cafe24");
+      const existingConnection = await storage.getMarketplaceConnectionByProvider(stateData.userId, "cafe24");
       
       const connectionData = {
-        userId: (req as any).user.id,
+        userId: stateData.userId,
         provider: "cafe24",
         authType: "oauth",
         shopId: mallId,
@@ -1637,18 +1646,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         connection = await storage.createMarketplaceConnection(connectionData);
       }
 
-      res.json({ 
-        message: "카페24 연결이 성공적으로 설정되었습니다.",
-        connection: {
-          id: connection.id,
-          provider: connection.provider,
-          shopDomain: connection.shopDomain,
-          status: connection.status,
-          createdAt: connection.createdAt
-        }
-      });
+      // Redirect back to frontend with success message
+      res.redirect('/market-sync?cafe24_connected=true');
     } catch (error: any) {
-      res.status(500).json({ message: "OAuth 콜백 처리 실패: " + error.message });
+      console.error("Cafe24 OAuth callback error:", error);
+      res.redirect('/market-sync?error=oauth_failed');
     }
   });
 
