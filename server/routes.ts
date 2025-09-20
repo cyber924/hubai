@@ -1526,8 +1526,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clientId = process.env.CAFE24_CLIENT_ID;
       const mallId = process.env.CAFE24_MALL_ID;
       
+      // 환경변수 값을 응답에 포함시켜 확인
       if (!clientId || !mallId) {
-        return res.status(500).json({ message: "카페24 설정이 필요합니다." });
+        return res.status(500).json({ 
+          message: "카페24 설정이 필요합니다.",
+          debug: {
+            clientId: clientId ? `${clientId.substring(0, 5)}...` : "undefined",
+            mallId: mallId || "undefined"
+          }
+        });
       }
 
       // Generate cryptographically secure state parameter for CSRF protection with user ID
@@ -1555,7 +1562,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `scope=${encodeURIComponent('mall.read_product mall.write_product')}`;
 
-      res.json({ authUrl });
+      res.json({ 
+        authUrl,
+        debug: {
+          clientId: clientId ? `${clientId.substring(0, 8)}...` : "undefined",
+          mallId: mallId || "undefined",
+          redirectUri: redirectUri
+        }
+      });
     } catch (error: any) {
       res.status(500).json({ message: "OAuth URL 생성 실패: " + error.message });
     }
