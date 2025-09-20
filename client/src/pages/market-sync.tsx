@@ -152,6 +152,7 @@ export default function MarketSync() {
     { id: "naver", name: "네이버 스마트스토어", icon: "🛍️", color: "bg-green-500" },
     { id: "coupang", name: "쿠팡", icon: "📦", color: "bg-orange-500" },
     { id: "zigzag", name: "지그재그", icon: "💄", color: "bg-pink-500" },
+    { id: "cafe24", name: "카페24", icon: "☕", color: "bg-purple-500" },
     { id: "stylehub", name: "스타일허브 커스텀", icon: "⚙️", color: "bg-blue-500" },
   ];
 

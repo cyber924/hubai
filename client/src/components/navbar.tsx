@@ -24,6 +24,7 @@ export default function Navbar() {
     { name: "내 쇼핑몰", href: "/my-store" },
     { name: "마켓 연동", href: "/market-sync" },
     { name: "요금제", href: "/pricing" },
+    ...(user?.isAdmin ? [{ name: "대시보드", href: "/admin" }] : []),
   ];
 
   const isActive = (href: string) => location === href;

@@ -206,3 +206,95 @@ export type OptimizationJob = typeof optimizationJobs.$inferSelect;
 export type InsertOptimizationJob = z.infer<typeof insertOptimizationJobSchema>;
 export type OptimizationSuggestion = typeof optimizationSuggestions.$inferSelect;
 export type InsertOptimizationSuggestion = z.infer<typeof insertOptimizationSuggestionSchema>;
+
+// ===== MarketplaceAdapter Structure =====
+
+// 마켓플레이스 제공자 타입
+export type MarketplaceProvider = 'naver' | 'coupang' | 'zigzag' | 'cafe24';
+
+// 마켓플레이스 역량 정의
+export interface MarketplaceCapabilities {
+  supportsCSV: boolean;        // CSV 내보내기 지원
+  supportsAPI: boolean;        // API 직접 연동 지원
+  supportsOAuth: boolean;      // OAuth 인증 지원
+  rateLimit: number;           // API 호출 제한 (per minute)
+  maxBatchSize: number;        // 한 번에 처리 가능한 상품 수
+}
+
+// 마켓플레이스 어댑터 인터페이스
+export interface MarketplaceAdapter {
+  provider: MarketplaceProvider;
+  capabilities: MarketplaceCapabilities;
+  
+  // CSV 관련 메서드
+  mapProductToCSV(product: Product): Record<string, any>;
+  buildCSVHeaders(): string[];
+  buildCSVContent(products: Product[]): string;
+  
+  // API 관련 메서드 (옵셔널)
+  pushProduct?(product: Product, connectionId: string): Promise<MarketplaceSyncResult>;
+  updateInventory?(productId: string, stock: number, connectionId: string): Promise<MarketplaceSyncResult>;
+  getStatus?(marketplaceProductId: string, connectionId: string): Promise<MarketplaceProductStatus>;
+}
+
+// 마켓플레이스 동기화 결과
+export interface MarketplaceSyncResult {
+  success: boolean;
+  marketplaceProductId?: string;
+  errorMessage?: string;
+  retryAfter?: number; // seconds
+}
+
+// 마켓플레이스 상품 상태
+export interface MarketplaceProductStatus {
+  status: 'active' | 'inactive' | 'pending' | 'rejected';
+  lastUpdated: Date;
+  inventoryCount?: number;
+  errorMessage?: string;
+}
+
+// 마켓플레이스 연결 정보 (메모리 기반)
+export interface MarketplaceConnection {
+  id: string;
+  userId: string;
+  provider: MarketplaceProvider;
+  shopId?: string;           // 쇼핑몰 ID (카페24 등)
+  shopDomain?: string;       // 쇼핑몰 도메인
+  authType: 'oauth' | 'apikey' | 'none';
+  accessToken?: string;      // OAuth 액세스 토큰
+  refreshToken?: string;     // OAuth 리프레시 토큰
+  expiresAt?: Date;         // 토큰 만료일
+  apiKey?: string;          // API 키 (필요한 경우)
+  status: 'active' | 'expired' | 'error';
+  lastSynced?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// 카페24 전용 설정
+export interface Cafe24Config {
+  mallId: string;
+  clientId: string;
+  redirectUri: string;
+  scope: string[];
+}
+
+// Zod 스키마들
+export const marketplaceConnectionSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  provider: z.enum(['naver', 'coupang', 'zigzag', 'cafe24']),
+  shopId: z.string().optional(),
+  shopDomain: z.string().optional(),
+  authType: z.enum(['oauth', 'apikey', 'none']),
+  accessToken: z.string().optional(),
+  refreshToken: z.string().optional(),
+  expiresAt: z.date().optional(),
+  apiKey: z.string().optional(),
+  status: z.enum(['active', 'expired', 'error']),
+  lastSynced: z.date().optional(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export type InsertMarketplaceConnection = Omit<MarketplaceConnection, 'id' | 'createdAt' | 'updatedAt'>;
