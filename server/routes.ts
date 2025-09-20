@@ -1536,7 +1536,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Store state in session for verification
       (req as any).session.cafe24_oauth_state = state;
       
-      const redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+      // 배포 환경 vs 개발 환경 구분
+      let redirectUri;
+      if (process.env.NODE_ENV === 'production' || req.get('host')?.includes('replit.app')) {
+        redirectUri = `https://style-hub-ai-sungbae0613.replit.app/api/marketplace/cafe24/callback`;
+      } else {
+        redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+      }
       
       const authUrl = `https://${mallId}.cafe24api.com/api/v2/oauth/authorize?` +
         `response_type=code&` +
@@ -1576,7 +1582,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ message: "카페24 설정이 완전하지 않습니다." });
       }
 
-      const redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+      // 배포 환경 vs 개발 환경 구분
+      let redirectUri;
+      if (process.env.NODE_ENV === 'production' || req.get('host')?.includes('replit.app')) {
+        redirectUri = `https://style-hub-ai-sungbae0613.replit.app/api/marketplace/cafe24/callback`;
+      } else {
+        redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+      }
 
       // Exchange code for access token
       const tokenResponse = await fetch(`https://${mallId}.cafe24api.com/api/v2/oauth/token`, {
