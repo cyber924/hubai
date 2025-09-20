@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AdminSidebar from "@/components/admin-sidebar";
 import ProductDetailModal from "@/components/ProductDetailModal";
 import ProductEditModal from "@/components/ProductEditModal";
-import { api } from "@/lib/api";
+import { api, type RegistrationJob } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Package, 
@@ -35,6 +36,7 @@ export default function ProductManagement() {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [isRegistering, setIsRegistering] = useState(false);
+  const [activeJobIds, setActiveJobIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -45,6 +47,14 @@ export default function ProductManagement() {
       if (statusFilter !== 'all') params.status = statusFilter;
       return api.getProducts(params);
     },
+  });
+
+  // Real-time polling for registration jobs
+  const { data: registrationJobs } = useQuery({
+    queryKey: ['/api/registration/jobs'],
+    queryFn: () => api.getRegistrationJobs(10),
+    refetchInterval: activeJobIds.size > 0 ? 2000 : false, // Poll every 2 seconds if there are active jobs
+    refetchOnWindowFocus: false,
   });
 
   const updateProductMutation = useMutation({
@@ -94,6 +104,12 @@ export default function ProductManagement() {
     setIsRegistering(true);
     try {
       const response = await api.registerSelectedProducts([productId]);
+      
+      // Add new job to active jobs tracking
+      if (response.job?.id) {
+        setActiveJobIds(prev => new Set(prev).add(response.job.id));
+      }
+      
       toast({
         title: "등록 작업 시작",
         description: "상품 등록이 시작되었습니다.",
@@ -171,13 +187,30 @@ export default function ProductManagement() {
     }
 
     const selectedIds = Array.from(selectedProductIds);
-    console.log("등록할 상품 IDs:", selectedIds);
-    console.log("선택된 상품들:", selectedIds.map(id => products?.find((p: any) => p.id === id)?.name || id));
+    if (import.meta.env.DEV) {
+      console.log("등록할 상품 IDs:", selectedIds);
+      console.log("선택된 상품들:", selectedIds.map(id => products?.find((p: any) => p.id === id)?.name || id));
+    }
 
     setIsRegistering(true);
     try {
       const response = await api.registerSelectedProducts(selectedIds);
-      console.log("등록 응답:", response);
+      
+      if (import.meta.env.DEV) {
+        console.log("등록 응답:", response);
+      }
+      
+      // Add new job to active jobs tracking
+      if (response.job?.id) {
+        setActiveJobIds(prev => {
+          const newSet = new Set(prev).add(response.job.id);
+          if (import.meta.env.DEV) {
+            console.log("Active jobs updated:", Array.from(newSet));
+          }
+          return newSet;
+        });
+      }
+      
       toast({
         title: "등록 작업 시작",
         description: `${selectedProductIds.size}개 상품 등록이 시작되었습니다.`,
@@ -185,7 +218,9 @@ export default function ProductManagement() {
       setSelectedProductIds(new Set());
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
     } catch (error) {
-      console.error("등록 에러:", error);
+      if (import.meta.env.DEV) {
+        console.error("등록 에러:", error);
+      }
       toast({
         title: "등록 실패",
         description: "선택된 상품 등록에 실패했습니다.",
@@ -200,6 +235,12 @@ export default function ProductManagement() {
     setIsRegistering(true);
     try {
       const response = await api.registerAllProducts();
+      
+      // Add new job to active jobs tracking
+      if (response.job?.id) {
+        setActiveJobIds(prev => new Set(prev).add(response.job.id));
+      }
+      
       toast({
         title: "전체 등록 작업 시작",
         description: "모든 상품 등록이 시작되었습니다.",
@@ -331,6 +372,68 @@ export default function ProductManagement() {
     setSelectedProductIds(new Set());
   }, [statusFilter]);
 
+  // Track active registration jobs and handle completion
+  useEffect(() => {
+    if (!registrationJobs) return;
+
+    if (import.meta.env.DEV) {
+      console.log("Polling registration jobs:", registrationJobs);
+      console.log("Current active job IDs:", Array.from(activeJobIds));
+    }
+
+    const currentActiveJobs = new Set<string>();
+    const completedJobs = new Set<string>();
+
+    registrationJobs.forEach((job: RegistrationJob) => {
+      if (job.status === 'running' || job.status === 'pending') {
+        currentActiveJobs.add(job.id);
+      } else if ((job.status === 'completed' || job.status === 'failed') && activeJobIds.has(job.id)) {
+        completedJobs.add(job.id);
+      }
+    });
+
+    if (import.meta.env.DEV) {
+      console.log("Current active jobs:", Array.from(currentActiveJobs));
+      console.log("Completed jobs:", Array.from(completedJobs));
+    }
+
+    // Handle completed jobs
+    if (completedJobs.size > 0) {
+      completedJobs.forEach(jobId => {
+        const job = registrationJobs.find((j: RegistrationJob) => j.id === jobId);
+        if (job) {
+          if (import.meta.env.DEV) {
+            console.log("Processing completed job:", job);
+          }
+          
+          if (job.status === 'completed') {
+            toast({
+              title: "등록 완료",
+              description: `${job.successCount}개 상품이 성공적으로 등록되었습니다.`,
+            });
+          } else if (job.status === 'failed') {
+            toast({
+              title: "등록 실패",
+              description: job.errorMessage || "등록 중 오류가 발생했습니다.",
+              variant: "destructive",
+            });
+          }
+        }
+      });
+
+      // Refresh products list after job completion
+      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+    }
+
+    // Update active job IDs
+    setActiveJobIds(currentActiveJobs);
+
+    // Stop registration state if no active jobs
+    if (currentActiveJobs.size === 0 && isRegistering) {
+      setIsRegistering(false);
+    }
+  }, [registrationJobs, activeJobIds, isRegistering, toast, queryClient]);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "analyzed":
@@ -437,6 +540,43 @@ export default function ProductManagement() {
             </CardContent>
           </Card>
 
+          {/* Registration Progress Section */}
+          {activeJobIds.size > 0 && registrationJobs && (
+            <Card className="mb-8 border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+              <CardHeader>
+                <CardTitle className="korean-text flex items-center text-blue-800 dark:text-blue-200">
+                  <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                  등록 작업 진행 중
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {registrationJobs
+                  .filter((job: RegistrationJob) => activeJobIds.has(job.id))
+                  .map((job: RegistrationJob) => (
+                    <div key={job.id} className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="korean-text font-medium">
+                          {job.type === 'bulk' ? '전체 상품 등록' : 
+                           job.type === 'selected' ? `선택된 상품 등록` : '개별 상품 등록'}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {job.processedProducts}/{job.totalProducts}
+                        </span>
+                      </div>
+                      <Progress 
+                        value={(job.processedProducts / job.totalProducts) * 100} 
+                        className="h-2"
+                      />
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>성공: {job.successCount}개</span>
+                        <span>실패: {job.failureCount}개</span>
+                      </div>
+                    </div>
+                  ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* CSV Upload Section */}
           <Card className="mb-8">
             <CardHeader>
@@ -517,6 +657,7 @@ export default function ProductManagement() {
                         variant="outline"
                         size="sm"
                         onClick={selectedProductIds.size === 0 ? handleSelectAll : handleDeselectAll}
+                        disabled={isRegistering || analyzedProducts.length === 0}
                         className="korean-text"
                         data-testid="button-select-all"
                       >
@@ -540,7 +681,7 @@ export default function ProductManagement() {
                           </span>
                           <Button
                             onClick={handleRegisterSelected}
-                            disabled={isRegistering}
+                            disabled={isRegistering || selectedProductIds.size === 0}
                             className="korean-text"
                             data-testid="button-register-selected"
                           >
@@ -596,6 +737,7 @@ export default function ProductManagement() {
                         <Checkbox
                           checked={selectedProductIds.has(product.id)}
                           onCheckedChange={(checked) => handleProductSelect(product.id, checked as boolean)}
+                          disabled={isRegistering}
                           className="h-4 w-4"
                           data-testid={`checkbox-product-${product.id}`}
                         />

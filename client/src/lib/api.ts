@@ -26,6 +26,23 @@ export interface ScrapingJob {
   createdAt: Date;
 }
 
+export interface RegistrationJob {
+  id: string;
+  type: 'individual' | 'selected' | 'bulk';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  productIds: string[];
+  totalProducts: number;
+  processedProducts: number;
+  successCount: number;
+  failureCount: number;
+  startedAt?: Date;
+  completedAt?: Date;
+  errorMessage?: string;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export const api = {
   // Product operations
   async getProducts(params?: { limit?: number; offset?: number; source?: string; status?: string }) {
