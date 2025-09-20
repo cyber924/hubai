@@ -17,6 +17,7 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import ProductFeed from "@/pages/admin/product-feed";
 import ProductManagement from "@/pages/admin/product-management";
 import ImageManagement from "@/pages/admin/image-management";
+import AIOptimization from "@/pages/admin/ai-optimization";
 import AiReports from "@/pages/admin/ai-reports";
 import AdminUsers from "@/pages/admin/users";
 import Navbar from "@/components/navbar";
@@ -73,6 +74,11 @@ function Router() {
       <Route path="/admin/image-management">
         <ProtectedRoute requireAdmin>
           <ImageManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/ai-optimization">
+        <ProtectedRoute requireAdmin>
+          <AIOptimization />
         </ProtectedRoute>
       </Route>
       <Route path="/admin/ai-reports">

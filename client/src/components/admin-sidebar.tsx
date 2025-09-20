@@ -9,7 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
-  Image
+  Image,
+  Bot
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -52,6 +53,12 @@ export default function AdminSidebar({ className }: AdminSidebarProps) {
       name: "이미지 관리", 
       href: "/admin/image-management", 
       icon: Image,
+      exact: false
+    },
+    { 
+      name: "AI 상품명 최적화", 
+      href: "/admin/ai-optimization", 
+      icon: Bot,
       exact: false
     },
     { 
