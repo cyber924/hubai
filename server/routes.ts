@@ -1523,18 +1523,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cafe24 OAuth API
   app.post("/api/marketplace/cafe24/auth", requireAuth, async (req, res) => {
     try {
-      const clientId = process.env.CAFE24_CLIENT_ID;
-      const mallId = process.env.CAFE24_MALL_ID;
+      // 새로운 카페24 자격증명 하드코딩
+      const clientId = "wLw4c845MVpgjzxjnzfK1D";
+      const clientSecret = "jrJfMmdFPSDN5zY2V8UNeI";
+      const mallId = "glovv";
       
-      // 환경변수 값을 응답에 포함시켜 확인
       if (!clientId || !mallId) {
-        return res.status(500).json({ 
-          message: "카페24 설정이 필요합니다.",
-          debug: {
-            clientId: clientId ? `${clientId.substring(0, 5)}...` : "undefined",
-            mallId: mallId || "undefined"
-          }
-        });
+        return res.status(500).json({ message: "카페24 설정이 필요합니다." });
       }
 
       // Generate cryptographically secure state parameter for CSRF protection with user ID
@@ -1562,14 +1557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `scope=${encodeURIComponent('mall.read_product mall.write_product')}`;
 
-      res.json({ 
-        authUrl,
-        debug: {
-          clientId: clientId ? `${clientId.substring(0, 8)}...` : "undefined",
-          mallId: mallId || "undefined",
-          redirectUri: redirectUri
-        }
-      });
+      res.json({ authUrl });
     } catch (error: any) {
       res.status(500).json({ message: "OAuth URL 생성 실패: " + error.message });
     }
@@ -1596,9 +1584,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect('/market-sync?error=missing_user_info');
       }
 
-      const clientId = process.env.CAFE24_CLIENT_ID;
-      const clientSecret = process.env.CAFE24_CLIENT_SECRET;
-      const mallId = process.env.CAFE24_MALL_ID;
+      // 새로운 카페24 자격증명 하드코딩
+      const clientId = "wLw4c845MVpgjzxjnzfK1D";
+      const clientSecret = "jrJfMmdFPSDN5zY2V8UNeI";
+      const mallId = "glovv";
       
       if (!clientId || !clientSecret || !mallId) {
         return res.redirect('/market-sync?error=config_missing');
