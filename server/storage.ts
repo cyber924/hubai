@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory } from "@shared/schema";
+import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, type RegistrationJob, type InsertRegistrationJob, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory, registrationJobs } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -48,6 +48,12 @@ export interface IStorage {
   createScrapingJob(job: InsertScrapingJob): Promise<ScrapingJob>;
   updateScrapingJob(id: string, updates: Partial<ScrapingJob>): Promise<ScrapingJob>;
 
+  // Registration job operations
+  getRegistrationJobs(limit?: number): Promise<RegistrationJob[]>;
+  getRegistrationJob(id: string): Promise<RegistrationJob | undefined>;
+  createRegistrationJob(job: InsertRegistrationJob): Promise<RegistrationJob>;
+  updateRegistrationJob(id: string, updates: Partial<RegistrationJob>): Promise<RegistrationJob>;
+
   // Statistics
   getProductStats(): Promise<{
     total: number;
@@ -70,6 +76,7 @@ export class MemStorage implements IStorage {
   private scrapingJobs: Map<string, ScrapingJob>;
   private productOptions: Map<string, ProductOption>;
   private inventories: Map<string, Inventory>;
+  private registrationJobs: Map<string, RegistrationJob>;
 
   constructor() {
     this.users = new Map();
@@ -78,6 +85,7 @@ export class MemStorage implements IStorage {
     this.scrapingJobs = new Map();
     this.productOptions = new Map();
     this.inventories = new Map();
+    this.registrationJobs = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -375,6 +383,43 @@ export class MemStorage implements IStorage {
   async deleteInventory(id: string): Promise<void> {
     this.inventories.delete(id);
   }
+
+  // Registration job operations
+  async getRegistrationJobs(limit = 10): Promise<RegistrationJob[]> {
+    const jobs = Array.from(this.registrationJobs.values()).sort((a, b) => {
+      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bDate - aDate;
+    });
+    return jobs.slice(0, limit);
+  }
+
+  async getRegistrationJob(id: string): Promise<RegistrationJob | undefined> {
+    return this.registrationJobs.get(id);
+  }
+
+  async createRegistrationJob(insertJob: InsertRegistrationJob): Promise<RegistrationJob> {
+    const id = randomUUID();
+    const job: RegistrationJob = {
+      ...insertJob,
+      id,
+      status: insertJob.status ?? "pending",
+      errorMessage: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.registrationJobs.set(id, job);
+    return job;
+  }
+
+  async updateRegistrationJob(id: string, updates: Partial<RegistrationJob>): Promise<RegistrationJob> {
+    const job = this.registrationJobs.get(id);
+    if (!job) throw new Error("Registration job not found");
+    
+    const updatedJob = { ...job, ...updates, updatedAt: new Date() };
+    this.registrationJobs.set(id, updatedJob);
+    return updatedJob;
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -651,6 +696,45 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInventory(id: string): Promise<void> {
     await this.db.delete(productInventory).where(eq(productInventory.id, id));
+  }
+
+  // Registration job operations (temporary memory-based until DB sync is fixed)
+  private registrationJobs: Map<string, RegistrationJob> = new Map();
+
+  async getRegistrationJobs(limit = 10): Promise<RegistrationJob[]> {
+    const jobs = Array.from(this.registrationJobs.values()).sort((a, b) => {
+      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bDate - aDate;
+    });
+    return jobs.slice(0, limit);
+  }
+
+  async getRegistrationJob(id: string): Promise<RegistrationJob | undefined> {
+    return this.registrationJobs.get(id);
+  }
+
+  async createRegistrationJob(insertJob: InsertRegistrationJob): Promise<RegistrationJob> {
+    const id = randomUUID();
+    const job: RegistrationJob = {
+      ...insertJob,
+      id,
+      status: insertJob.status ?? "pending",
+      errorMessage: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.registrationJobs.set(id, job);
+    return job;
+  }
+
+  async updateRegistrationJob(id: string, updates: Partial<RegistrationJob>): Promise<RegistrationJob> {
+    const job = this.registrationJobs.get(id);
+    if (!job) throw new Error("Registration job not found");
+    
+    const updatedJob = { ...job, ...updates, updatedAt: new Date() };
+    this.registrationJobs.set(id, updatedJob);
+    return updatedJob;
   }
 }
 
