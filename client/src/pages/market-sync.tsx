@@ -166,7 +166,7 @@ export default function MarketSync() {
   // 카페24 OAuth 인증 뮤테이션
   const cafe24AuthMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('/api/marketplace/cafe24/auth', 'POST');
+      const response = await apiRequest('POST', '/api/marketplace/cafe24/auth');
       return response;
     },
     onSuccess: (data: any) => {
@@ -186,7 +186,7 @@ export default function MarketSync() {
   // 마켓플레이스 연결 삭제 뮤테이션
   const deleteConnectionMutation = useMutation({
     mutationFn: async (connectionId: string) => {
-      await apiRequest(`/api/marketplace/connections/${connectionId}`, 'DELETE');
+      await apiRequest('DELETE', `/api/marketplace/connections/${connectionId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/marketplace/connections'] });
@@ -207,7 +207,7 @@ export default function MarketSync() {
   // 카페24 상품 등록 뮤테이션
   const cafe24SyncMutation = useMutation({
     mutationFn: async (productIds: string[]) => {
-      const response = await apiRequest('/api/marketplace/cafe24/products', 'POST', { productIds });
+      const response = await apiRequest('POST', '/api/marketplace/cafe24/products', { productIds });
       return response;
     },
     onSuccess: (data: any) => {
@@ -427,7 +427,7 @@ export default function MarketSync() {
                                 <WifiOff className="h-6 w-6 text-red-500" />
                               )}
                             </div>
-                            <p className="text-sm text-center korean-text">
+                            <div className="text-sm text-center korean-text">
                               {cafe24Status.connected ? (
                                 <Badge variant="secondary" className="korean-text">
                                   연결됨
@@ -437,7 +437,7 @@ export default function MarketSync() {
                                   연결 안됨
                                 </Badge>
                               )}
-                            </p>
+                            </div>
                             {cafe24Connection && (
                               <p className="text-xs text-muted-foreground korean-text text-center mt-1">
                                 {cafe24Connection.shopDomain}
