@@ -167,7 +167,7 @@ export default function MarketSync() {
   const cafe24AuthMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/marketplace/cafe24/auth');
-      return response;
+      return response.json();
     },
     onSuccess: (data: any) => {
       if (data.authUrl) {
@@ -208,7 +208,7 @@ export default function MarketSync() {
   const cafe24SyncMutation = useMutation({
     mutationFn: async (productIds: string[]) => {
       const response = await apiRequest('POST', '/api/marketplace/cafe24/products', { productIds });
-      return response;
+      return response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
