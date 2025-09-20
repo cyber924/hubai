@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import csv from "csv-parser";
 import fs from "fs";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { scrapeProducts, startScheduledScraping } from "./services/scraper";
 import { generateTrendReport } from "./services/gemini";
@@ -1488,6 +1489,273 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       res.status(500).json({ message: "상품명 변경 실패: " + error.message });
+    }
+  });
+
+  // Marketplace connections API
+  app.get("/api/marketplace/connections", requireAuth, async (req, res) => {
+    try {
+      const connections = await storage.getMarketplaceConnections((req as any).user.id);
+      res.json(connections);
+    } catch (error: any) {
+      res.status(500).json({ message: "마켓플레이스 연결 조회 실패: " + error.message });
+    }
+  });
+
+  app.delete("/api/marketplace/connections/:id", requireAuth, async (req, res) => {
+    try {
+      const connection = await storage.getMarketplaceConnection(req.params.id);
+      if (!connection) {
+        return res.status(404).json({ message: "연결을 찾을 수 없습니다." });
+      }
+
+      if (connection.userId !== (req as any).user.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      await storage.deleteMarketplaceConnection(req.params.id);
+      res.json({ message: "마켓플레이스 연결이 삭제되었습니다." });
+    } catch (error: any) {
+      res.status(500).json({ message: "연결 삭제 실패: " + error.message });
+    }
+  });
+
+  // Cafe24 OAuth API
+  app.post("/api/marketplace/cafe24/auth", requireAuth, async (req, res) => {
+    try {
+      const clientId = process.env.CAFE24_CLIENT_ID;
+      const mallId = process.env.CAFE24_MALL_ID;
+      
+      if (!clientId || !mallId) {
+        return res.status(500).json({ message: "카페24 설정이 필요합니다." });
+      }
+
+      // Generate cryptographically secure state parameter for CSRF protection
+      const state = crypto.randomBytes(16).toString('hex');
+      
+      // Store state in session for verification
+      (req as any).session.cafe24_oauth_state = state;
+      
+      const redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+      
+      const authUrl = `https://${mallId}.cafe24api.com/api/v2/oauth/authorize?` +
+        `response_type=code&` +
+        `client_id=${clientId}&` +
+        `state=${state}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `scope=${encodeURIComponent('mall.read_product mall.write_product')}`;
+
+      res.json({ authUrl });
+    } catch (error: any) {
+      res.status(500).json({ message: "OAuth URL 생성 실패: " + error.message });
+    }
+  });
+
+  app.get("/api/marketplace/cafe24/callback", requireAuth, async (req, res) => {
+    try {
+      const code = String(req.query.code || '');
+      const state = String(req.query.state || '');
+      
+      if (!code || !state) {
+        return res.status(400).json({ message: "인증 코드 또는 state가 누락되었습니다." });
+      }
+
+      // Verify state parameter
+      if (state !== (req as any).session.cafe24_oauth_state) {
+        return res.status(400).json({ message: "잘못된 state 파라미터입니다." });
+      }
+
+      // Clear state from session
+      delete (req as any).session.cafe24_oauth_state;
+
+      const clientId = process.env.CAFE24_CLIENT_ID;
+      const clientSecret = process.env.CAFE24_CLIENT_SECRET;
+      const mallId = process.env.CAFE24_MALL_ID;
+      
+      if (!clientId || !clientSecret || !mallId) {
+        return res.status(500).json({ message: "카페24 설정이 완전하지 않습니다." });
+      }
+
+      const redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+
+      // Exchange code for access token
+      const tokenResponse = await fetch(`https://${mallId}.cafe24api.com/api/v2/oauth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: redirectUri
+        })
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        return res.status(400).json({ message: "토큰 교환 실패: " + errorText });
+      }
+
+      const tokenData = await tokenResponse.json();
+      
+      // Check if user already has a Cafe24 connection
+      const existingConnection = await storage.getMarketplaceConnectionByProvider((req as any).user.id, "cafe24");
+      
+      const connectionData = {
+        userId: (req as any).user.id,
+        provider: "cafe24",
+        authType: "oauth",
+        shopId: mallId,
+        shopDomain: `${mallId}.cafe24.com`,
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || null,
+        expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
+        status: "active" as const,
+        lastSynced: null,
+        errorMessage: null
+      };
+
+      let connection;
+      if (existingConnection) {
+        // Update existing connection
+        connection = await storage.updateMarketplaceConnection(existingConnection.id, connectionData);
+      } else {
+        // Create new connection
+        connection = await storage.createMarketplaceConnection(connectionData);
+      }
+
+      res.json({ 
+        message: "카페24 연결이 성공적으로 설정되었습니다.",
+        connection: {
+          id: connection.id,
+          provider: connection.provider,
+          shopDomain: connection.shopDomain,
+          status: connection.status,
+          createdAt: connection.createdAt
+        }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "OAuth 콜백 처리 실패: " + error.message });
+    }
+  });
+
+  // Cafe24 product registration API
+  app.post("/api/marketplace/cafe24/products", requireAuth, async (req, res) => {
+    try {
+      const { productIds } = req.body;
+      
+      if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+        return res.status(400).json({ message: "등록할 상품 ID가 필요합니다." });
+      }
+
+      // Get Cafe24 connection
+      const connection = await storage.getMarketplaceConnectionByProvider((req as any).user.id, "cafe24");
+      if (!connection) {
+        return res.status(400).json({ message: "카페24 연결이 필요합니다." });
+      }
+
+      if (connection.status !== "active") {
+        return res.status(400).json({ message: "카페24 연결이 비활성화되어 있습니다." });
+      }
+
+      let successCount = 0;
+      let failureCount = 0;
+      const results = [];
+
+      for (const productId of productIds) {
+        try {
+          const product = await storage.getProduct(productId);
+          if (!product) {
+            results.push({ productId, success: false, error: "상품을 찾을 수 없습니다." });
+            failureCount++;
+            continue;
+          }
+
+          // Prepare product data for Cafe24 API
+          const productPrice = parseFloat(product.price);
+          const cafe24ProductData = {
+            shop_no: 1,
+            product_name: product.name,
+            supply_product_name: product.name,
+            internal_product_name: product.name,
+            model_name: product.sourceProductId || `MODEL_${Date.now()}`,
+            price: Math.round(productPrice),
+            retail_price: Math.round(productPrice * 1.3), // 30% markup for retail
+            supply_price: Math.round(productPrice * 0.8), // 20% discount for supply
+            display: 'T',
+            selling: 'T',
+            product_condition: 'N', // New product
+            product_important: 'N',
+            product_type: 'P', // Physical product
+            tax_type: 'A', // Taxable
+            simple_description: product.description?.substring(0, 255) || '',
+            description: product.description || '',
+            mobile_description: product.description || '',
+            translated: 'F',
+            adult_certification: 'F',
+            detail_image: product.imageUrls && product.imageUrls.length > 0 ? product.imageUrls[0] : product.imageUrl,
+            list_image: product.imageUrls && product.imageUrls.length > 0 ? product.imageUrls[0] : product.imageUrl,
+            tiny_image: product.imageUrls && product.imageUrls.length > 0 ? product.imageUrls[0] : product.imageUrl,
+            small_image: product.imageUrls && product.imageUrls.length > 0 ? product.imageUrls[0] : product.imageUrl,
+            category: [{ category_no: 1 }] // Default category, should be configurable
+          };
+
+          // Make API call to Cafe24
+          const response = await fetch(`https://${connection.shopId}.cafe24api.com/api/v2/admin/products`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${connection.accessToken}`,
+              'Content-Type': 'application/json',
+              'X-Cafe24-Api-Version': '2022-03-01'
+            },
+            body: JSON.stringify({
+              request: {
+                product: cafe24ProductData
+              }
+            })
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            results.push({ productId, success: false, error: `API 오류: ${errorText}` });
+            failureCount++;
+            continue;
+          }
+
+          const responseData = await response.json();
+          
+          // Update product status - simplified without marketplaceData for now
+          await storage.updateProduct(productId, {
+            status: "synced"
+          });
+
+          results.push({ productId, success: true, cafe24ProductNo: responseData.product?.product_no });
+          successCount++;
+
+          // Rate limiting: 2 calls per second for Cafe24
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+        } catch (error: any) {
+          results.push({ productId, success: false, error: error.message });
+          failureCount++;
+        }
+      }
+
+      // Update connection last synced time
+      await storage.updateMarketplaceConnection(connection.id, {
+        lastSynced: new Date()
+      });
+
+      res.json({
+        message: `상품 등록 완료: 성공 ${successCount}개, 실패 ${failureCount}개`,
+        totalProducts: productIds.length,
+        successCount,
+        failureCount,
+        results
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "상품 등록 실패: " + error.message });
     }
   });
 
