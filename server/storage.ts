@@ -533,6 +533,10 @@ export class MemStorage implements IStorage {
 
 export class DatabaseStorage implements IStorage {
   private db;
+  
+  // AI Optimization - 메모리 기반 저장소 (임시 해결책)
+  private optimizationJobs = new Map<string, OptimizationJob>();
+  private optimizationSuggestions = new Map<string, OptimizationSuggestion>();
 
   constructor() {
     if (!process.env.DATABASE_URL) {
@@ -846,38 +850,69 @@ export class DatabaseStorage implements IStorage {
     return updatedJob;
   }
 
-  // AI Optimization job operations (Not implemented - Database schema pending)
-  async getOptimizationJobs(limit?: number): Promise<OptimizationJob[]> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  // AI Optimization job operations (메모리 기반 구현)
+  async getOptimizationJobs(limit = 10): Promise<OptimizationJob[]> {
+    const jobs = Array.from(this.optimizationJobs.values()).sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return jobs.slice(0, limit);
   }
 
   async getOptimizationJob(id: string): Promise<OptimizationJob | undefined> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+    return this.optimizationJobs.get(id);
   }
 
   async createOptimizationJob(job: Omit<OptimizationJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationJob> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+    const id = randomUUID();
+    const optimizationJob: OptimizationJob = {
+      ...job,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.optimizationJobs.set(id, optimizationJob);
+    return optimizationJob;
   }
 
   async updateOptimizationJob(id: string, updates: Partial<OptimizationJob>): Promise<OptimizationJob> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+    const job = this.optimizationJobs.get(id);
+    if (!job) throw new Error("Optimization job not found");
+    
+    const updatedJob = { ...job, ...updates, updatedAt: new Date() };
+    this.optimizationJobs.set(id, updatedJob);
+    return updatedJob;
   }
 
   // AI Optimization suggestion operations
   async getOptimizationSuggestions(jobId: string): Promise<OptimizationSuggestion[]> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+    return Array.from(this.optimizationSuggestions.values())
+      .filter(suggestion => suggestion.jobId === jobId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async getOptimizationSuggestion(id: string): Promise<OptimizationSuggestion | undefined> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+    return this.optimizationSuggestions.get(id);
   }
 
   async createOptimizationSuggestion(suggestion: Omit<OptimizationSuggestion, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationSuggestion> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+    const id = randomUUID();
+    const optimizationSuggestion: OptimizationSuggestion = {
+      ...suggestion,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.optimizationSuggestions.set(id, optimizationSuggestion);
+    return optimizationSuggestion;
   }
 
   async updateOptimizationSuggestion(id: string, updates: Partial<OptimizationSuggestion>): Promise<OptimizationSuggestion> {
-    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+    const suggestion = this.optimizationSuggestions.get(id);
+    if (!suggestion) throw new Error("Optimization suggestion not found");
+    
+    const updatedSuggestion = { ...suggestion, ...updates, updatedAt: new Date() };
+    this.optimizationSuggestions.set(id, updatedSuggestion);
+    return updatedSuggestion;
   }
 }
 

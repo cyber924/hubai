@@ -36,10 +36,10 @@ export default function AIOptimization() {
   const [showJobDetails, setShowJobDetails] = useState(false);
   const { toast } = useToast();
 
-  // Fetch registered products
+  // Fetch analyzed products (ready for optimization)
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['/api/products'],
-    select: (data: Product[]) => data.filter(p => p.status === "registered")
+    select: (data: Product[]) => data.filter(p => p.status === "analyzed")
   });
 
   // Fetch optimization jobs
