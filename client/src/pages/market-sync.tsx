@@ -1,11 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RefreshCw, Download, ExternalLink, CheckCircle, Clock, AlertCircle, Settings } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RefreshCw, Download, ExternalLink, CheckCircle, Clock, AlertCircle, Settings, Link as LinkIcon, Trash2, Wifi, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function MarketSync() {
   const [selectedMarketplace, setSelectedMarketplace] = useState<string>("all");
@@ -13,7 +15,10 @@ export default function MarketSync() {
   const [selectedColumns, setSelectedColumns] = useState<string[]>([
     'name', 'description', 'price', 'originalPrice', 'imageUrl', 'category', 'brand'
   ]);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [showCafe24Dialog, setShowCafe24Dialog] = useState<boolean>(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // 스타일허브용 컬럼 옵션들
   const availableColumns = [
@@ -140,12 +145,87 @@ export default function MarketSync() {
     queryKey: ['/api/marketplace-syncs'],
   });
 
-  const { data: products } = useQuery<any[]>({
+  const { data: products, isLoading: productsLoading } = useQuery<any[]>({
     queryKey: ['/api/products', 'registered'],
     queryFn: async () => {
-      const res = await fetch('/api/products?status=registered');
-      return res.json();
+      const response = await fetch('/api/products?status=registered', {
+        credentials: 'include'
+      });
+      return response.json();
     },
+  });
+
+  // 마켓플레이스 연결 정보 조회
+  const { data: connections } = useQuery<any[]>({
+    queryKey: ['/api/marketplace/connections'],
+  });
+
+  // 카페24 연결 정보
+  const cafe24Connection = connections?.find(conn => conn.provider === 'cafe24');
+
+  // 카페24 OAuth 인증 뮤테이션
+  const cafe24AuthMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('/api/marketplace/cafe24/auth', 'POST');
+      return response;
+    },
+    onSuccess: (data: any) => {
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "연결 실패",
+        description: error.message || "카페24 연결 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // 마켓플레이스 연결 삭제 뮤테이션
+  const deleteConnectionMutation = useMutation({
+    mutationFn: async (connectionId: string) => {
+      await apiRequest(`/api/marketplace/connections/${connectionId}`, 'DELETE');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/marketplace/connections'] });
+      toast({
+        title: "연결 해제 완료",
+        description: "마켓플레이스 연결이 해제되었습니다.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "연결 해제 실패",
+        description: error.message || "연결 해제 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // 카페24 상품 등록 뮤테이션
+  const cafe24SyncMutation = useMutation({
+    mutationFn: async (productIds: string[]) => {
+      const response = await apiRequest('/api/marketplace/cafe24/products', 'POST', { productIds });
+      return response;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
+      toast({
+        title: "동기화 완료",
+        description: `${data.successCount || 0}개 상품이 성공적으로 등록되었습니다.`,
+      });
+      setSelectedProducts([]);
+      setShowCafe24Dialog(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "동기화 실패",
+        description: error.message || "상품 등록 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
   });
 
   const marketplaces = [
@@ -180,6 +260,75 @@ export default function MarketSync() {
       default:
         return <Badge variant="outline" className="korean-text">{status}</Badge>;
     }
+  };
+
+  // 카페24 연결 상태 확인
+  const getCafe24Status = () => {
+    if (!cafe24Connection) {
+      return { connected: false, status: "disconnected" };
+    }
+    
+    if (cafe24Connection.status === 'active') {
+      return { connected: true, status: "connected" };
+    }
+    
+    return { connected: false, status: cafe24Connection.status };
+  };
+
+  // 카페24 연결 처리
+  const handleCafe24Connect = () => {
+    cafe24AuthMutation.mutate();
+  };
+
+  // 카페24 연결 해제 처리
+  const handleCafe24Disconnect = () => {
+    if (cafe24Connection) {
+      deleteConnectionMutation.mutate(cafe24Connection.id);
+    }
+  };
+
+  // 카페24 동기화 처리
+  const handleCafe24Sync = () => {
+    if (!cafe24Connection) {
+      toast({
+        title: "연결 필요",
+        description: "먼저 카페24에 연결해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setShowCafe24Dialog(true);
+  };
+
+  // 상품 선택 처리
+  const handleProductSelect = (productId: string) => {
+    setSelectedProducts(prev => 
+      prev.includes(productId)
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  // 모든 상품 선택/해제
+  const handleSelectAll = () => {
+    if (selectedProducts.length === (products?.length || 0)) {
+      setSelectedProducts([]);
+    } else {
+      setSelectedProducts(products?.map(p => p.id) || []);
+    }
+  };
+
+  // 카페24 동기화 확인
+  const handleConfirmCafe24Sync = () => {
+    if (selectedProducts.length === 0) {
+      toast({
+        title: "상품 선택 필요",
+        description: "동기화할 상품을 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+    cafe24SyncMutation.mutate(selectedProducts);
   };
 
   return (
@@ -263,6 +412,103 @@ export default function MarketSync() {
                       커스텀 CSV 다운로드
                     </Button>
                   </div>
+                ) : marketplace.id === 'cafe24' ? (
+                  // 카페24 전용 UI
+                  <div className="space-y-4">
+                    {(() => {
+                      const cafe24Status = getCafe24Status();
+                      return (
+                        <>
+                          <div className="mb-4">
+                            <div className="flex items-center justify-center mb-2">
+                              {cafe24Status.connected ? (
+                                <Wifi className="h-6 w-6 text-green-500" />
+                              ) : (
+                                <WifiOff className="h-6 w-6 text-red-500" />
+                              )}
+                            </div>
+                            <p className="text-sm text-center korean-text">
+                              {cafe24Status.connected ? (
+                                <Badge variant="secondary" className="korean-text">
+                                  연결됨
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="korean-text">
+                                  연결 안됨
+                                </Badge>
+                              )}
+                            </p>
+                            {cafe24Connection && (
+                              <p className="text-xs text-muted-foreground korean-text text-center mt-1">
+                                {cafe24Connection.shopDomain}
+                              </p>
+                            )}
+                          </div>
+
+                          {cafe24Status.connected ? (
+                            // 연결된 상태 UI
+                            <div className="space-y-2">
+                              <Button 
+                                className="w-full korean-text" 
+                                size="sm"
+                                onClick={handleCafe24Sync}
+                                disabled={cafe24SyncMutation.isPending}
+                                data-testid="button-sync-cafe24"
+                              >
+                                <RefreshCw className={`mr-2 h-4 w-4 ${cafe24SyncMutation.isPending ? 'animate-spin' : ''}`} />
+                                상품 등록
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                className="w-full korean-text" 
+                                size="sm"
+                                onClick={() => downloadCSV('cafe24')}
+                                data-testid="button-export-cafe24"
+                              >
+                                <Download className="mr-2 h-4 w-4" />
+                                CSV 다운로드
+                              </Button>
+                              <Button 
+                                variant="destructive" 
+                                className="w-full korean-text" 
+                                size="sm"
+                                onClick={handleCafe24Disconnect}
+                                disabled={deleteConnectionMutation.isPending}
+                                data-testid="button-disconnect-cafe24"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                연결 해제
+                              </Button>
+                            </div>
+                          ) : (
+                            // 연결되지 않은 상태 UI
+                            <div className="space-y-2">
+                              <Button 
+                                className="w-full korean-text" 
+                                size="sm"
+                                onClick={handleCafe24Connect}
+                                disabled={cafe24AuthMutation.isPending}
+                                data-testid="button-connect-cafe24"
+                              >
+                                <LinkIcon className="mr-2 h-4 w-4" />
+                                카페24 연결하기
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                className="w-full korean-text" 
+                                size="sm"
+                                onClick={() => downloadCSV('cafe24')}
+                                data-testid="button-export-cafe24"
+                              >
+                                <Download className="mr-2 h-4 w-4" />
+                                CSV 다운로드
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 ) : (
                   // 일반 마켓플레이스 UI
                   <>
@@ -304,7 +550,17 @@ export default function MarketSync() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="korean-text">동기화 현황</CardTitle>
-              <Button variant="outline" size="sm" className="korean-text" data-testid="button-refresh-sync">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="korean-text" 
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
+                  queryClient.invalidateQueries({ queryKey: ['/api/marketplace/connections'] });
+                  queryClient.invalidateQueries({ queryKey: ['/api/products', 'registered'] });
+                }}
+                data-testid="button-refresh-sync"
+              >
                 <RefreshCw className="mr-2 h-4 w-4" />
                 새로고침
               </Button>
@@ -396,6 +652,115 @@ export default function MarketSync() {
             </div>
           </CardContent>
         </Card>
+
+        {/* 카페24 상품 선택 다이얼로그 */}
+        <Dialog open={showCafe24Dialog} onOpenChange={setShowCafe24Dialog}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle className="korean-text">카페24에 등록할 상품 선택</DialogTitle>
+              <DialogDescription className="korean-text">
+                카페24에 등록하고 싶은 상품을 선택해주세요. 선택된 상품들이 카페24 스토어에 자동으로 등록됩니다.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="flex flex-col h-[500px]">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="select-all"
+                    checked={selectedProducts.length === (products?.length || 0) && (products?.length || 0) > 0}
+                    onCheckedChange={handleSelectAll}
+                    data-testid="checkbox-select-all"
+                  />
+                  <label htmlFor="select-all" className="text-sm korean-text">
+                    전체 선택 ({selectedProducts.length}/{products?.length || 0})
+                  </label>
+                </div>
+                <Badge variant="outline" className="korean-text">
+                  등록 가능한 상품: {products?.length || 0}개
+                </Badge>
+              </div>
+
+              <div className="flex-1 overflow-y-auto border rounded-md">
+                {products && products.length > 0 ? (
+                  <div className="divide-y">
+                    {products.map((product: any, index: number) => (
+                      <div key={product.id} className="flex items-center space-x-4 p-4 hover:bg-muted/50">
+                        <Checkbox
+                          id={`product-${product.id}`}
+                          checked={selectedProducts.includes(product.id)}
+                          onCheckedChange={() => handleProductSelect(product.id)}
+                          data-testid={`checkbox-product-${index}`}
+                        />
+                        <div className="flex-shrink-0">
+                          {product.imageUrl ? (
+                            <img 
+                              src={product.imageUrl} 
+                              alt={product.name}
+                              className="w-12 h-12 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
+                              <span className="text-xs text-muted-foreground">이미지</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium korean-text truncate" data-testid={`text-product-name-${index}`}>
+                            {product.name}
+                          </p>
+                          <p className="text-sm text-muted-foreground korean-text">
+                            {product.brand && `${product.brand} • `}
+                            {product.category || '카테고리 없음'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold english-text" data-testid={`text-product-price-${index}`}>
+                            ₩{parseFloat(product.price).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-muted-foreground korean-text">
+                            {product.source}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32">
+                    <p className="text-muted-foreground korean-text">등록 가능한 상품이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowCafe24Dialog(false)}
+                data-testid="button-cancel-cafe24-sync"
+              >
+                취소
+              </Button>
+              <Button
+                onClick={handleConfirmCafe24Sync}
+                disabled={selectedProducts.length === 0 || cafe24SyncMutation.isPending || productsLoading}
+                data-testid="button-confirm-cafe24-sync"
+              >
+                {cafe24SyncMutation.isPending ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    등록 중...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {selectedProducts.length}개 상품 등록
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
