@@ -101,6 +101,33 @@ export const registrationJobs = pgTable("registration_jobs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const optimizationJobs = pgTable("optimization_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  totalProducts: integer("total_products").notNull().default(0),
+  processedProducts: integer("processed_products").notNull().default(0),
+  successCount: integer("success_count").notNull().default(0),
+  failureCount: integer("failure_count").notNull().default(0),
+  status: text("status").default("pending"), // pending, running, completed, failed
+  productIds: jsonb("product_ids").notNull(), // Array of product IDs to optimize
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const optimizationSuggestions = pgTable("optimization_suggestions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").references(() => optimizationJobs.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  originalName: text("original_name").notNull(),
+  suggestedNames: jsonb("suggested_names").notNull(), // Array of AI suggested names
+  selectedName: text("selected_name"), // User's final choice
+  aiAnalysis: jsonb("ai_analysis"), // Gemini's analysis and reasoning
+  status: text("status").default("pending"), // pending, approved, rejected
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -149,6 +176,18 @@ export const insertRegistrationJobSchema = createInsertSchema(registrationJobs).
   updatedAt: true,
 });
 
+export const insertOptimizationJobSchema = createInsertSchema(optimizationJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOptimizationSuggestionSchema = createInsertSchema(optimizationSuggestions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Product = typeof products.$inferSelect;
@@ -163,3 +202,7 @@ export type Inventory = typeof productInventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type RegistrationJob = typeof registrationJobs.$inferSelect;
 export type InsertRegistrationJob = z.infer<typeof insertRegistrationJobSchema>;
+export type OptimizationJob = typeof optimizationJobs.$inferSelect;
+export type InsertOptimizationJob = z.infer<typeof insertOptimizationJobSchema>;
+export type OptimizationSuggestion = typeof optimizationSuggestions.$inferSelect;
+export type InsertOptimizationSuggestion = z.infer<typeof insertOptimizationSuggestionSchema>;
