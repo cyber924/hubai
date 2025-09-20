@@ -1,4 +1,32 @@
 import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, type RegistrationJob, type InsertRegistrationJob, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory, registrationJobs } from "@shared/schema";
+
+// AI Optimization types (메모리 기반으로 구현)
+type OptimizationJob = {
+  id: string;
+  createdBy: string;
+  totalProducts: number;
+  processedProducts: number;
+  successCount: number;
+  failureCount: number;
+  status: string;
+  productIds: any;
+  errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type OptimizationSuggestion = {
+  id: string;
+  jobId: string;
+  productId: string;
+  originalName: string;
+  suggestedNames: any;
+  selectedName: string | null;
+  aiAnalysis: any;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
 import { randomUUID } from "crypto";
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -54,6 +82,18 @@ export interface IStorage {
   createRegistrationJob(job: InsertRegistrationJob): Promise<RegistrationJob>;
   updateRegistrationJob(id: string, updates: Partial<RegistrationJob>): Promise<RegistrationJob>;
 
+  // AI Optimization job operations
+  getOptimizationJobs(limit?: number): Promise<OptimizationJob[]>;
+  getOptimizationJob(id: string): Promise<OptimizationJob | undefined>;
+  createOptimizationJob(job: Omit<OptimizationJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationJob>;
+  updateOptimizationJob(id: string, updates: Partial<OptimizationJob>): Promise<OptimizationJob>;
+
+  // AI Optimization suggestion operations  
+  getOptimizationSuggestions(jobId: string): Promise<OptimizationSuggestion[]>;
+  getOptimizationSuggestion(id: string): Promise<OptimizationSuggestion | undefined>;
+  createOptimizationSuggestion(suggestion: Omit<OptimizationSuggestion, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationSuggestion>;
+  updateOptimizationSuggestion(id: string, updates: Partial<OptimizationSuggestion>): Promise<OptimizationSuggestion>;
+
   // Statistics
   getProductStats(): Promise<{
     total: number;
@@ -77,6 +117,8 @@ export class MemStorage implements IStorage {
   private productOptions: Map<string, ProductOption>;
   private inventories: Map<string, Inventory>;
   private registrationJobs: Map<string, RegistrationJob>;
+  private optimizationJobs: Map<string, OptimizationJob>;
+  private optimizationSuggestions: Map<string, OptimizationSuggestion>;
 
   constructor() {
     this.users = new Map();
@@ -86,6 +128,8 @@ export class MemStorage implements IStorage {
     this.productOptions = new Map();
     this.inventories = new Map();
     this.registrationJobs = new Map();
+    this.optimizationJobs = new Map();
+    this.optimizationSuggestions = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -420,6 +464,71 @@ export class MemStorage implements IStorage {
     this.registrationJobs.set(id, updatedJob);
     return updatedJob;
   }
+
+  // AI Optimization job operations
+  async getOptimizationJobs(limit = 10): Promise<OptimizationJob[]> {
+    const jobs = Array.from(this.optimizationJobs.values()).sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return jobs.slice(0, limit);
+  }
+
+  async getOptimizationJob(id: string): Promise<OptimizationJob | undefined> {
+    return this.optimizationJobs.get(id);
+  }
+
+  async createOptimizationJob(job: Omit<OptimizationJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationJob> {
+    const id = randomUUID();
+    const optimizationJob: OptimizationJob = {
+      ...job,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.optimizationJobs.set(id, optimizationJob);
+    return optimizationJob;
+  }
+
+  async updateOptimizationJob(id: string, updates: Partial<OptimizationJob>): Promise<OptimizationJob> {
+    const job = this.optimizationJobs.get(id);
+    if (!job) throw new Error("Optimization job not found");
+    
+    const updatedJob = { ...job, ...updates, updatedAt: new Date() };
+    this.optimizationJobs.set(id, updatedJob);
+    return updatedJob;
+  }
+
+  // AI Optimization suggestion operations
+  async getOptimizationSuggestions(jobId: string): Promise<OptimizationSuggestion[]> {
+    return Array.from(this.optimizationSuggestions.values())
+      .filter(suggestion => suggestion.jobId === jobId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async getOptimizationSuggestion(id: string): Promise<OptimizationSuggestion | undefined> {
+    return this.optimizationSuggestions.get(id);
+  }
+
+  async createOptimizationSuggestion(suggestion: Omit<OptimizationSuggestion, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationSuggestion> {
+    const id = randomUUID();
+    const optimizationSuggestion: OptimizationSuggestion = {
+      ...suggestion,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.optimizationSuggestions.set(id, optimizationSuggestion);
+    return optimizationSuggestion;
+  }
+
+  async updateOptimizationSuggestion(id: string, updates: Partial<OptimizationSuggestion>): Promise<OptimizationSuggestion> {
+    const suggestion = this.optimizationSuggestions.get(id);
+    if (!suggestion) throw new Error("Optimization suggestion not found");
+    
+    const updatedSuggestion = { ...suggestion, ...updates, updatedAt: new Date() };
+    this.optimizationSuggestions.set(id, updatedSuggestion);
+    return updatedSuggestion;
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -735,6 +844,40 @@ export class DatabaseStorage implements IStorage {
     const updatedJob = { ...job, ...updates, updatedAt: new Date() };
     this.registrationJobs.set(id, updatedJob);
     return updatedJob;
+  }
+
+  // AI Optimization job operations (Not implemented - Database schema pending)
+  async getOptimizationJobs(limit?: number): Promise<OptimizationJob[]> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  }
+
+  async getOptimizationJob(id: string): Promise<OptimizationJob | undefined> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  }
+
+  async createOptimizationJob(job: Omit<OptimizationJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationJob> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  }
+
+  async updateOptimizationJob(id: string, updates: Partial<OptimizationJob>): Promise<OptimizationJob> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  }
+
+  // AI Optimization suggestion operations
+  async getOptimizationSuggestions(jobId: string): Promise<OptimizationSuggestion[]> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  }
+
+  async getOptimizationSuggestion(id: string): Promise<OptimizationSuggestion | undefined> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  }
+
+  async createOptimizationSuggestion(suggestion: Omit<OptimizationSuggestion, 'id' | 'createdAt' | 'updatedAt'>): Promise<OptimizationSuggestion> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
+  }
+
+  async updateOptimizationSuggestion(id: string, updates: Partial<OptimizationSuggestion>): Promise<OptimizationSuggestion> {
+    throw new Error("AI Optimization not yet implemented in DatabaseStorage - use MemStorage for testing");
   }
 }
 
