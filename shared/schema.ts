@@ -128,6 +128,24 @@ export const optimizationSuggestions = pgTable("optimization_suggestions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const marketplaceConnections = pgTable("marketplace_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  provider: text("provider").notNull(), // naver, coupang, zigzag, cafe24
+  shopId: text("shop_id"), // 쇼핑몰 ID (카페24 등)
+  shopDomain: text("shop_domain"), // 쇼핑몰 도메인
+  authType: text("auth_type").notNull(), // oauth, apikey, none
+  accessToken: text("access_token"), // OAuth 액세스 토큰 (암호화 저장)
+  refreshToken: text("refresh_token"), // OAuth 리프레시 토큰 (암호화 저장)
+  expiresAt: timestamp("expires_at"), // 토큰 만료일
+  apiKey: text("api_key"), // API 키 (필요한 경우)
+  status: text("status").default("active"), // active, expired, error
+  lastSynced: timestamp("last_synced"),
+  errorMessage: text("error_message"), // 연결 오류 메시지
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -188,6 +206,12 @@ export const insertOptimizationSuggestionSchema = createInsertSchema(optimizatio
   updatedAt: true,
 });
 
+export const insertMarketplaceConnectionSchema = createInsertSchema(marketplaceConnections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Product = typeof products.$inferSelect;
@@ -206,6 +230,8 @@ export type OptimizationJob = typeof optimizationJobs.$inferSelect;
 export type InsertOptimizationJob = z.infer<typeof insertOptimizationJobSchema>;
 export type OptimizationSuggestion = typeof optimizationSuggestions.$inferSelect;
 export type InsertOptimizationSuggestion = z.infer<typeof insertOptimizationSuggestionSchema>;
+export type MarketplaceConnection = typeof marketplaceConnections.$inferSelect;
+export type InsertMarketplaceConnection = z.infer<typeof insertMarketplaceConnectionSchema>;
 
 // ===== MarketplaceAdapter Structure =====
 
@@ -253,24 +279,6 @@ export interface MarketplaceProductStatus {
   errorMessage?: string;
 }
 
-// 마켓플레이스 연결 정보 (메모리 기반)
-export interface MarketplaceConnection {
-  id: string;
-  userId: string;
-  provider: MarketplaceProvider;
-  shopId?: string;           // 쇼핑몰 ID (카페24 등)
-  shopDomain?: string;       // 쇼핑몰 도메인
-  authType: 'oauth' | 'apikey' | 'none';
-  accessToken?: string;      // OAuth 액세스 토큰
-  refreshToken?: string;     // OAuth 리프레시 토큰
-  expiresAt?: Date;         // 토큰 만료일
-  apiKey?: string;          // API 키 (필요한 경우)
-  status: 'active' | 'expired' | 'error';
-  lastSynced?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 // 카페24 전용 설정
 export interface Cafe24Config {
   mallId: string;
@@ -278,23 +286,3 @@ export interface Cafe24Config {
   redirectUri: string;
   scope: string[];
 }
-
-// Zod 스키마들
-export const marketplaceConnectionSchema = z.object({
-  id: z.string(),
-  userId: z.string(),
-  provider: z.enum(['naver', 'coupang', 'zigzag', 'cafe24']),
-  shopId: z.string().optional(),
-  shopDomain: z.string().optional(),
-  authType: z.enum(['oauth', 'apikey', 'none']),
-  accessToken: z.string().optional(),
-  refreshToken: z.string().optional(),
-  expiresAt: z.date().optional(),
-  apiKey: z.string().optional(),
-  status: z.enum(['active', 'expired', 'error']),
-  lastSynced: z.date().optional(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
-});
-
-export type InsertMarketplaceConnection = Omit<MarketplaceConnection, 'id' | 'createdAt' | 'updatedAt'>;
