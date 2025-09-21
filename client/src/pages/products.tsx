@@ -133,8 +133,8 @@ export default function Products() {
               checked={selectedProducts.includes(product.id)}
               onCheckedChange={(checked) => handleProductSelect(product.id, checked as boolean)}
             />
-            <Badge variant={getStatusBadgeVariant(product.status)} data-testid={`badge-status-${product.id}`}>
-              {getStatusText(product.status)}
+            <Badge variant={getStatusBadgeVariant(product.status || 'collected')} data-testid={`badge-status-${product.id}`}>
+              {getStatusText(product.status || 'collected')}
             </Badge>
           </div>
           <div className="text-right">

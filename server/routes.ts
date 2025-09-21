@@ -268,42 +268,6 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Express> {
   
   console.log('[ROUTES] Registering API routes...');
-      
-      console.log('[CAFE24 APP] 앱 설치/인증 요청 수신:', {
-        mall_id,
-        user_id,
-        user_name: decodeURIComponent(String(user_name || '')),
-        timestamp,
-        lang,
-        nation,
-        shop_no,
-        user_type
-      });
-
-      if (!mall_id || !user_id) {
-        return res.status(400).json({ 
-          message: "mall_id와 user_id가 필요합니다.",
-          status: "error"
-        });
-      }
-
-      // TODO: HMAC 검증 추가 필요
-      // const clientSecret = process.env.CAFE24_CLIENT_SECRET;
-      // if (!verifyHmac(req.query, clientSecret)) {
-      //   return res.status(401).json({ message: "HMAC 검증 실패" });
-      // }
-
-      res.status(200).json({
-        message: "카페24 앱이 성공적으로 설치되었습니다.",
-        status: "success",
-        mall_id,
-        user_id
-      });
-    } catch (error: any) {
-      console.error('[CAFE24 APP] 앱 설치 오류:', error);
-      res.status(500).json({ message: "앱 설치 중 오류가 발생했습니다." });
-    }
-  });
 
   // Authentication routes
   app.post("/api/auth/register", async (req, res) => {
