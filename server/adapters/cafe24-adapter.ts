@@ -111,7 +111,7 @@ export class Cafe24Adapter implements MarketplaceAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + Buffer.from(`wLw4c845MVpgjzxjnzfK1D:jrJfMmdFPSDN5zY2V8UNeI`).toString('base64')
+          'Authorization': 'Basic ' + Buffer.from(`${process.env.CAFE24_CLIENT_ID}:${process.env.CAFE24_CLIENT_SECRET}`).toString('base64')
         },
         body: new URLSearchParams({
           grant_type: 'refresh_token',

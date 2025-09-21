@@ -1523,10 +1523,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cafe24 OAuth API
   app.post("/api/marketplace/cafe24/auth", requireAuth, async (req, res) => {
     try {
-      // 새로운 카페24 자격증명 하드코딩
-      const clientId = "wLw4c845MVpgjzxjnzfK1D";
-      const clientSecret = "jrJfMmdFPSDN5zY2V8UNeI";
-      const mallId = "glovv";
+      // 환경변수에서 카페24 자격증명 가져오기
+      const clientId = process.env.CAFE24_CLIENT_ID;
+      const clientSecret = process.env.CAFE24_CLIENT_SECRET;
+      const mallId = process.env.CAFE24_MALL_ID;
       
       if (!clientId || !mallId) {
         return res.status(500).json({ message: "카페24 설정이 필요합니다." });
@@ -1584,10 +1584,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect('/market-sync?error=missing_user_info');
       }
 
-      // 새로운 카페24 자격증명 하드코딩
-      const clientId = "wLw4c845MVpgjzxjnzfK1D";
-      const clientSecret = "jrJfMmdFPSDN5zY2V8UNeI";
-      const mallId = "glovv";
+      // 환경변수에서 카페24 자격증명 가져오기
+      const clientId = process.env.CAFE24_CLIENT_ID;
+      const clientSecret = process.env.CAFE24_CLIENT_SECRET;
+      const mallId = process.env.CAFE24_MALL_ID;
       
       if (!clientId || !clientSecret || !mallId) {
         return res.redirect('/market-sync?error=config_missing');
