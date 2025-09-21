@@ -256,16 +256,17 @@ const selectedRegistrationSchema = z.object({
 
 // Multer setup for file uploads
 const upload = multer({ 
-  dest: '/tmp/uploads/',
+  storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv') || 
+        file.mimetype === 'application/vnd.ms-excel' || file.originalname.endsWith('.xlsx') || file.originalname.endsWith('.xls')) {
       cb(null, true);
     } else {
-      cb(new Error('Only CSV files are allowed'));
+      cb(new Error('Only CSV and Excel files are allowed'));
     }
   },
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   }
 });
 
