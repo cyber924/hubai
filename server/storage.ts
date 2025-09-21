@@ -127,6 +127,17 @@ export interface IStorage {
   updateExportProfile(id: string, updates: Partial<ExportProfile>): Promise<ExportProfile>;
   deleteExportProfile(id: string): Promise<void>;
 
+  // 데이터 변환 관련 메서드
+  getAvailableMappingProfiles(marketplace?: string): Promise<any[]>;
+  createMappingProfile(profile: any, userId: string): Promise<any>;
+  getMappingProfile(profileId: string, userId: string): Promise<any | null>;
+  updateMappingProfile(profileId: string, updates: any, userId: string): Promise<any | null>;
+  deleteMappingProfile(profileId: string, userId: string): Promise<boolean>;
+  
+  // Export 관련 메서드 
+  generateExportPreview(templateId: string, userId: string, sampleData: any[]): Promise<string>;
+  generateExportCSV(templateId: string, userId: string, productIds: string[], profileId?: string): Promise<string>;
+
   // Statistics
   getProductStats(): Promise<{
     total: number;
@@ -156,6 +167,7 @@ export class MemStorage implements IStorage {
   private marketplaceTemplates: Map<string, MarketplaceTemplate>;
   private fieldMappings: Map<string, FieldMapping>;
   private exportProfiles: Map<string, ExportProfile>;
+  private mappingProfiles: any[] = [];
 
   constructor() {
     this.users = new Map();
@@ -771,6 +783,61 @@ export class MemStorage implements IStorage {
   async deleteExportProfile(id: string): Promise<void> {
     this.exportProfiles.delete(id);
   }
+
+  // 데이터 변환 관련 메서드 (MemStorage)
+  async getAvailableMappingProfiles(marketplace?: string): Promise<any[]> {
+    if (marketplace) {
+      return this.mappingProfiles.filter(profile => profile.marketplace === marketplace);
+    }
+    return this.mappingProfiles;
+  }
+
+  async createMappingProfile(profile: any, userId: string): Promise<any> {
+    const newProfile = {
+      id: randomUUID(),
+      ...profile,
+      userId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.mappingProfiles.push(newProfile);
+    return newProfile;
+  }
+
+  async getMappingProfile(profileId: string, userId: string): Promise<any | null> {
+    return this.mappingProfiles.find(p => p.id === profileId && p.userId === userId) || null;
+  }
+
+  async updateMappingProfile(profileId: string, updates: any, userId: string): Promise<any | null> {
+    const index = this.mappingProfiles.findIndex(p => p.id === profileId && p.userId === userId);
+    if (index === -1) return null;
+    
+    this.mappingProfiles[index] = {
+      ...this.mappingProfiles[index],
+      ...updates,
+      updatedAt: new Date()
+    };
+    return this.mappingProfiles[index];
+  }
+
+  async deleteMappingProfile(profileId: string, userId: string): Promise<boolean> {
+    const index = this.mappingProfiles.findIndex(p => p.id === profileId && p.userId === userId);
+    if (index === -1) return false;
+    
+    this.mappingProfiles.splice(index, 1);
+    return true;
+  }
+
+  // Export 관련 메서드 (MemStorage)
+  async generateExportPreview(templateId: string, userId: string, sampleData: any[]): Promise<string> {
+    // 미리보기 CSV 생성
+    return 'header1,header2,header3\nvalue1,value2,value3';
+  }
+
+  async generateExportCSV(templateId: string, userId: string, productIds: string[], profileId?: string): Promise<string> {
+    // 실제 CSV 생성
+    return 'product_name,price,category\nSample Product,10000,Fashion';
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1334,6 +1401,63 @@ export class DatabaseStorage implements IStorage {
   async deleteExportProfile(id: string): Promise<void> {
     await this.db.delete(exportProfiles)
       .where(eq(exportProfiles.id, id));
+  }
+
+  // 데이터 변환 관련 메서드 (DatabaseStorage) - 메모리 기반으로 임시 구현
+  private mappingProfiles: any[] = [];
+
+  async getAvailableMappingProfiles(marketplace?: string): Promise<any[]> {
+    if (marketplace) {
+      return this.mappingProfiles.filter(profile => profile.marketplace === marketplace);
+    }
+    return this.mappingProfiles;
+  }
+
+  async createMappingProfile(profile: any, userId: string): Promise<any> {
+    const newProfile = {
+      id: randomUUID(),
+      ...profile,
+      userId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.mappingProfiles.push(newProfile);
+    return newProfile;
+  }
+
+  async getMappingProfile(profileId: string, userId: string): Promise<any | null> {
+    return this.mappingProfiles.find(p => p.id === profileId && p.userId === userId) || null;
+  }
+
+  async updateMappingProfile(profileId: string, updates: any, userId: string): Promise<any | null> {
+    const index = this.mappingProfiles.findIndex(p => p.id === profileId && p.userId === userId);
+    if (index === -1) return null;
+    
+    this.mappingProfiles[index] = {
+      ...this.mappingProfiles[index],
+      ...updates,
+      updatedAt: new Date()
+    };
+    return this.mappingProfiles[index];
+  }
+
+  async deleteMappingProfile(profileId: string, userId: string): Promise<boolean> {
+    const index = this.mappingProfiles.findIndex(p => p.id === profileId && p.userId === userId);
+    if (index === -1) return false;
+    
+    this.mappingProfiles.splice(index, 1);
+    return true;
+  }
+
+  // Export 관련 메서드 (DatabaseStorage)
+  async generateExportPreview(templateId: string, userId: string, sampleData: any[]): Promise<string> {
+    // CSV 생성 로직 구현 예정
+    return 'header1,header2,header3\nvalue1,value2,value3';
+  }
+
+  async generateExportCSV(templateId: string, userId: string, productIds: string[], profileId?: string): Promise<string> {
+    // 실제 CSV 생성 로직 구현 예정
+    return 'product_name,price,category\nSample Product,10000,Fashion';
   }
 }
 
