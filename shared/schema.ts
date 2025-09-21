@@ -232,6 +232,12 @@ export type OptimizationSuggestion = typeof optimizationSuggestions.$inferSelect
 export type InsertOptimizationSuggestion = z.infer<typeof insertOptimizationSuggestionSchema>;
 export type MarketplaceConnection = typeof marketplaceConnections.$inferSelect;
 export type InsertMarketplaceConnection = z.infer<typeof insertMarketplaceConnectionSchema>;
+export type MarketplaceTemplate = typeof marketplaceTemplates.$inferSelect;
+export type InsertMarketplaceTemplate = z.infer<typeof insertMarketplaceTemplateSchema>;
+export type FieldMapping = typeof fieldMappings.$inferSelect;
+export type InsertFieldMapping = z.infer<typeof insertFieldMappingSchema>;
+export type ExportProfile = typeof exportProfiles.$inferSelect;
+export type InsertExportProfile = z.infer<typeof insertExportProfileSchema>;
 
 // ===== MarketplaceAdapter Structure =====
 
@@ -278,6 +284,70 @@ export interface MarketplaceProductStatus {
   inventoryCount?: number;
   errorMessage?: string;
 }
+
+// 마켓플레이스 템플릿 (CSV 양식 저장)
+export const marketplaceTemplates = pgTable("marketplace_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull(), // cafe24, naver, coupang
+  version: text("version").notNull().default("v1"), // 템플릿 버전
+  name: text("name").notNull(), // 템플릿 이름 (예: "카페24 상품 등록")
+  description: text("description"), // 템플릿 설명
+  encoding: text("encoding").notNull().default("UTF-8"), // CSV 인코딩
+  delimiter: text("delimiter").notNull().default(","), // 구분자
+  headers: jsonb("headers").notNull(), // CSV 헤더 배열
+  requiredHeaders: jsonb("required_headers").notNull(), // 필수 헤더 배열
+  constraints: jsonb("constraints"), // 각 필드별 제약조건 (길이, 타입 등)
+  fingerprint: text("fingerprint").notNull().unique(), // 헤더 기반 지문
+  isOfficial: boolean("is_official").default(false), // 공식 템플릿 여부
+  maxImages: integer("max_images").default(5), // 최대 이미지 수
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// 필드 매핑 (우리 데이터 → 마켓플레이스 필드)
+export const fieldMappings = pgTable("field_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateId: varchar("template_id").references(() => marketplaceTemplates.id).notNull(),
+  headerName: text("header_name").notNull(), // 마켓플레이스 헤더명
+  sourcePath: text("source_path"), // 우리 데이터 경로 (예: product.name, product.price)
+  transformId: text("transform_id"), // 변환 함수 ID
+  transformArgs: jsonb("transform_args"), // 변환 함수 인자
+  defaultValue: text("default_value"), // 기본값
+  isRequired: boolean("is_required").default(false), // 필수 여부
+  displayOrder: integer("display_order").default(0), // 표시 순서
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// 내보내기 프로필 (사용자별 저장된 매핑 설정)
+export const exportProfiles = pgTable("export_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  templateId: varchar("template_id").references(() => marketplaceTemplates.id).notNull(),
+  name: text("name").notNull(), // 프로필 이름
+  mappings: jsonb("mappings").notNull(), // 전체 매핑 설정 JSON
+  isDefault: boolean("is_default").default(false), // 기본 프로필 여부
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMarketplaceTemplateSchema = createInsertSchema(marketplaceTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFieldMappingSchema = createInsertSchema(fieldMappings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertExportProfileSchema = createInsertSchema(exportProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 
 // 카페24 전용 설정
 export interface Cafe24Config {

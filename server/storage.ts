@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, type RegistrationJob, type InsertRegistrationJob, type MarketplaceConnection, type InsertMarketplaceConnection, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory, registrationJobs, marketplaceConnections } from "@shared/schema";
+import { type User, type InsertUser, type Product, type InsertProduct, type MarketplaceSync, type InsertMarketplaceSync, type ScrapingJob, type InsertScrapingJob, type ProductOption, type InsertProductOption, type Inventory, type InsertInventory, type RegistrationJob, type InsertRegistrationJob, type MarketplaceConnection, type InsertMarketplaceConnection, type MarketplaceTemplate, type InsertMarketplaceTemplate, type FieldMapping, type InsertFieldMapping, type ExportProfile, type InsertExportProfile, users, products, marketplaceSyncs, scrapingJobs, productOptions, productInventory, registrationJobs, marketplaceConnections, marketplaceTemplates, fieldMappings, exportProfiles } from "@shared/schema";
 
 // AI Optimization types (메모리 기반으로 구현)
 type OptimizationJob = {
@@ -102,6 +102,31 @@ export interface IStorage {
   updateMarketplaceConnection(id: string, updates: Partial<MarketplaceConnection>): Promise<MarketplaceConnection>;
   deleteMarketplaceConnection(id: string): Promise<void>;
 
+  // Marketplace template operations (만능 포맷 시스템)
+  getMarketplaceTemplates(): Promise<MarketplaceTemplate[]>;
+  getMarketplaceTemplate(id: string): Promise<MarketplaceTemplate | undefined>;
+  getMarketplaceTemplateByFingerprint(fingerprint: string): Promise<MarketplaceTemplate | undefined>;
+  getMarketplaceTemplatesByProvider(provider: string): Promise<MarketplaceTemplate[]>;
+  createMarketplaceTemplate(template: InsertMarketplaceTemplate): Promise<MarketplaceTemplate>;
+  updateMarketplaceTemplate(id: string, updates: Partial<MarketplaceTemplate>): Promise<MarketplaceTemplate>;
+  deleteMarketplaceTemplate(id: string): Promise<void>;
+
+  // Field mapping operations
+  getFieldMappings(templateId: string): Promise<FieldMapping[]>;
+  getFieldMapping(id: string): Promise<FieldMapping | undefined>;
+  createFieldMapping(mapping: InsertFieldMapping): Promise<FieldMapping>;
+  updateFieldMapping(id: string, updates: Partial<FieldMapping>): Promise<FieldMapping>;
+  deleteFieldMapping(id: string): Promise<void>;
+  deleteFieldMappingsByTemplate(templateId: string): Promise<void>;
+
+  // Export profile operations
+  getExportProfiles(userId: string): Promise<ExportProfile[]>;
+  getExportProfile(id: string): Promise<ExportProfile | undefined>;
+  getExportProfileByTemplate(userId: string, templateId: string): Promise<ExportProfile | undefined>;
+  createExportProfile(profile: InsertExportProfile): Promise<ExportProfile>;
+  updateExportProfile(id: string, updates: Partial<ExportProfile>): Promise<ExportProfile>;
+  deleteExportProfile(id: string): Promise<void>;
+
   // Statistics
   getProductStats(): Promise<{
     total: number;
@@ -128,6 +153,9 @@ export class MemStorage implements IStorage {
   private optimizationJobs: Map<string, OptimizationJob>;
   private optimizationSuggestions: Map<string, OptimizationSuggestion>;
   private marketplaceConnections: Map<string, MarketplaceConnection>;
+  private marketplaceTemplates: Map<string, MarketplaceTemplate>;
+  private fieldMappings: Map<string, FieldMapping>;
+  private exportProfiles: Map<string, ExportProfile>;
 
   constructor() {
     this.users = new Map();
@@ -140,6 +168,9 @@ export class MemStorage implements IStorage {
     this.optimizationJobs = new Map();
     this.optimizationSuggestions = new Map();
     this.marketplaceConnections = new Map();
+    this.marketplaceTemplates = new Map();
+    this.fieldMappings = new Map();
+    this.exportProfiles = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -597,6 +628,149 @@ export class MemStorage implements IStorage {
   async deleteMarketplaceConnection(id: string): Promise<void> {
     this.marketplaceConnections.delete(id);
   }
+
+  // 만능 포맷 시스템 메서드들
+  async getMarketplaceTemplates(): Promise<MarketplaceTemplate[]> {
+    return Array.from(this.marketplaceTemplates.values())
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async getMarketplaceTemplate(id: string): Promise<MarketplaceTemplate | undefined> {
+    return this.marketplaceTemplates.get(id);
+  }
+
+  async getMarketplaceTemplateByFingerprint(fingerprint: string): Promise<MarketplaceTemplate | undefined> {
+    return Array.from(this.marketplaceTemplates.values())
+      .find(template => template.fingerprint === fingerprint);
+  }
+
+  async getMarketplaceTemplatesByProvider(provider: string): Promise<MarketplaceTemplate[]> {
+    return Array.from(this.marketplaceTemplates.values())
+      .filter(template => template.provider === provider)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async createMarketplaceTemplate(insertTemplate: InsertMarketplaceTemplate): Promise<MarketplaceTemplate> {
+    const id = randomUUID();
+    const template: MarketplaceTemplate = {
+      ...insertTemplate,
+      id,
+      version: insertTemplate.version ?? "v1",
+      encoding: insertTemplate.encoding ?? "UTF-8",
+      delimiter: insertTemplate.delimiter ?? ",",
+      description: insertTemplate.description ?? null,
+      constraints: insertTemplate.constraints ?? null,
+      isOfficial: insertTemplate.isOfficial ?? false,
+      maxImages: insertTemplate.maxImages ?? 5,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.marketplaceTemplates.set(id, template);
+    return template;
+  }
+
+  async updateMarketplaceTemplate(id: string, updates: Partial<MarketplaceTemplate>): Promise<MarketplaceTemplate> {
+    const template = this.marketplaceTemplates.get(id);
+    if (!template) throw new Error("Marketplace template not found");
+    
+    const updatedTemplate = { ...template, ...updates, updatedAt: new Date() };
+    this.marketplaceTemplates.set(id, updatedTemplate);
+    return updatedTemplate;
+  }
+
+  async deleteMarketplaceTemplate(id: string): Promise<void> {
+    this.marketplaceTemplates.delete(id);
+  }
+
+  async getFieldMappings(templateId: string): Promise<FieldMapping[]> {
+    return Array.from(this.fieldMappings.values())
+      .filter(mapping => mapping.templateId === templateId)
+      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+  }
+
+  async getFieldMapping(id: string): Promise<FieldMapping | undefined> {
+    return this.fieldMappings.get(id);
+  }
+
+  async createFieldMapping(insertMapping: InsertFieldMapping): Promise<FieldMapping> {
+    const id = randomUUID();
+    const mapping: FieldMapping = {
+      ...insertMapping,
+      id,
+      sourcePath: insertMapping.sourcePath ?? null,
+      transformId: insertMapping.transformId ?? null,
+      transformArgs: insertMapping.transformArgs ?? null,
+      defaultValue: insertMapping.defaultValue ?? null,
+      isRequired: insertMapping.isRequired ?? false,
+      displayOrder: insertMapping.displayOrder ?? 0,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.fieldMappings.set(id, mapping);
+    return mapping;
+  }
+
+  async updateFieldMapping(id: string, updates: Partial<FieldMapping>): Promise<FieldMapping> {
+    const mapping = this.fieldMappings.get(id);
+    if (!mapping) throw new Error("Field mapping not found");
+    
+    const updatedMapping = { ...mapping, ...updates, updatedAt: new Date() };
+    this.fieldMappings.set(id, updatedMapping);
+    return updatedMapping;
+  }
+
+  async deleteFieldMapping(id: string): Promise<void> {
+    this.fieldMappings.delete(id);
+  }
+
+  async deleteFieldMappingsByTemplate(templateId: string): Promise<void> {
+    const mappingsToDelete = Array.from(this.fieldMappings.entries())
+      .filter(([_, mapping]) => mapping.templateId === templateId)
+      .map(([id, _]) => id);
+    
+    mappingsToDelete.forEach(id => this.fieldMappings.delete(id));
+  }
+
+  async getExportProfiles(userId: string): Promise<ExportProfile[]> {
+    return Array.from(this.exportProfiles.values())
+      .filter(profile => profile.userId === userId)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async getExportProfile(id: string): Promise<ExportProfile | undefined> {
+    return this.exportProfiles.get(id);
+  }
+
+  async getExportProfileByTemplate(userId: string, templateId: string): Promise<ExportProfile | undefined> {
+    return Array.from(this.exportProfiles.values())
+      .find(profile => profile.userId === userId && profile.templateId === templateId);
+  }
+
+  async createExportProfile(insertProfile: InsertExportProfile): Promise<ExportProfile> {
+    const id = randomUUID();
+    const profile: ExportProfile = {
+      ...insertProfile,
+      id,
+      isDefault: insertProfile.isDefault ?? false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.exportProfiles.set(id, profile);
+    return profile;
+  }
+
+  async updateExportProfile(id: string, updates: Partial<ExportProfile>): Promise<ExportProfile> {
+    const profile = this.exportProfiles.get(id);
+    if (!profile) throw new Error("Export profile not found");
+    
+    const updatedProfile = { ...profile, ...updates, updatedAt: new Date() };
+    this.exportProfiles.set(id, updatedProfile);
+    return updatedProfile;
+  }
+
+  async deleteExportProfile(id: string): Promise<void> {
+    this.exportProfiles.delete(id);
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1041,6 +1215,125 @@ export class DatabaseStorage implements IStorage {
   async deleteMarketplaceConnection(id: string): Promise<void> {
     await this.db.delete(marketplaceConnections)
       .where(eq(marketplaceConnections.id, id));
+  }
+
+  // 만능 포맷 시스템 메서드들
+  async getMarketplaceTemplates(): Promise<MarketplaceTemplate[]> {
+    return await this.db.select().from(marketplaceTemplates)
+      .orderBy(desc(marketplaceTemplates.createdAt));
+  }
+
+  async getMarketplaceTemplate(id: string): Promise<MarketplaceTemplate | undefined> {
+    const result = await this.db.select().from(marketplaceTemplates)
+      .where(eq(marketplaceTemplates.id, id));
+    return result[0];
+  }
+
+  async getMarketplaceTemplateByFingerprint(fingerprint: string): Promise<MarketplaceTemplate | undefined> {
+    const result = await this.db.select().from(marketplaceTemplates)
+      .where(eq(marketplaceTemplates.fingerprint, fingerprint));
+    return result[0];
+  }
+
+  async getMarketplaceTemplatesByProvider(provider: string): Promise<MarketplaceTemplate[]> {
+    return await this.db.select().from(marketplaceTemplates)
+      .where(eq(marketplaceTemplates.provider, provider))
+      .orderBy(desc(marketplaceTemplates.createdAt));
+  }
+
+  async createMarketplaceTemplate(insertTemplate: InsertMarketplaceTemplate): Promise<MarketplaceTemplate> {
+    const result = await this.db.insert(marketplaceTemplates).values(insertTemplate).returning();
+    return result[0];
+  }
+
+  async updateMarketplaceTemplate(id: string, updates: Partial<MarketplaceTemplate>): Promise<MarketplaceTemplate> {
+    const result = await this.db.update(marketplaceTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(marketplaceTemplates.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Marketplace template not found");
+    return result[0];
+  }
+
+  async deleteMarketplaceTemplate(id: string): Promise<void> {
+    await this.db.delete(marketplaceTemplates)
+      .where(eq(marketplaceTemplates.id, id));
+  }
+
+  async getFieldMappings(templateId: string): Promise<FieldMapping[]> {
+    return await this.db.select().from(fieldMappings)
+      .where(eq(fieldMappings.templateId, templateId))
+      .orderBy(fieldMappings.displayOrder);
+  }
+
+  async getFieldMapping(id: string): Promise<FieldMapping | undefined> {
+    const result = await this.db.select().from(fieldMappings)
+      .where(eq(fieldMappings.id, id));
+    return result[0];
+  }
+
+  async createFieldMapping(insertMapping: InsertFieldMapping): Promise<FieldMapping> {
+    const result = await this.db.insert(fieldMappings).values(insertMapping).returning();
+    return result[0];
+  }
+
+  async updateFieldMapping(id: string, updates: Partial<FieldMapping>): Promise<FieldMapping> {
+    const result = await this.db.update(fieldMappings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(fieldMappings.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Field mapping not found");
+    return result[0];
+  }
+
+  async deleteFieldMapping(id: string): Promise<void> {
+    await this.db.delete(fieldMappings)
+      .where(eq(fieldMappings.id, id));
+  }
+
+  async deleteFieldMappingsByTemplate(templateId: string): Promise<void> {
+    await this.db.delete(fieldMappings)
+      .where(eq(fieldMappings.templateId, templateId));
+  }
+
+  async getExportProfiles(userId: string): Promise<ExportProfile[]> {
+    return await this.db.select().from(exportProfiles)
+      .where(eq(exportProfiles.userId, userId))
+      .orderBy(desc(exportProfiles.createdAt));
+  }
+
+  async getExportProfile(id: string): Promise<ExportProfile | undefined> {
+    const result = await this.db.select().from(exportProfiles)
+      .where(eq(exportProfiles.id, id));
+    return result[0];
+  }
+
+  async getExportProfileByTemplate(userId: string, templateId: string): Promise<ExportProfile | undefined> {
+    const result = await this.db.select().from(exportProfiles)
+      .where(and(
+        eq(exportProfiles.userId, userId),
+        eq(exportProfiles.templateId, templateId)
+      ));
+    return result[0];
+  }
+
+  async createExportProfile(insertProfile: InsertExportProfile): Promise<ExportProfile> {
+    const result = await this.db.insert(exportProfiles).values(insertProfile).returning();
+    return result[0];
+  }
+
+  async updateExportProfile(id: string, updates: Partial<ExportProfile>): Promise<ExportProfile> {
+    const result = await this.db.update(exportProfiles)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(exportProfiles.id, id))
+      .returning();
+    if (result.length === 0) throw new Error("Export profile not found");
+    return result[0];
+  }
+
+  async deleteExportProfile(id: string): Promise<void> {
+    await this.db.delete(exportProfiles)
+      .where(eq(exportProfiles.id, id));
   }
 }
 
