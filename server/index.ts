@@ -6,6 +6,17 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// Trust proxy for production (Replit uses proxy)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+  
+  // Require SESSION_SECRET in production
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'your-secret-key-change-this-in-production') {
+    throw new Error('SESSION_SECRET is required in production and must be changed from default');
+  }
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -21,7 +32,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true if using HTTPS
+    secure: process.env.NODE_ENV === 'production', // HTTPS in production
     httpOnly: true,
     sameSite: 'lax', // CSRF protection
     maxAge: 24 * 60 * 60 * 1000 // 24 hours

@@ -1616,9 +1616,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(500).json({ message: "카페24 설정이 필요합니다." });
       }
 
-      // Generate cryptographically secure state parameter for CSRF protection with user ID
+      // Generate cryptographically secure state parameter for CSRF protection with user ID and mallId
       const stateData = {
         userId: (req as any).user.id,
+        mallId: mallId,
         nonce: crypto.randomBytes(16).toString('hex')
       };
       const state = Buffer.from(JSON.stringify(stateData)).toString('base64');
@@ -1626,12 +1627,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // Store state in session for verification
       (req as any).session.cafe24_oauth_state = state;
       
-      // 배포 환경 vs 개발 환경 구분
-      let redirectUri;
-      if (process.env.NODE_ENV === 'production' || req.get('host')?.includes('replit.app')) {
-        redirectUri = `https://style-hub-ai-sungbae0613.replit.app/api/marketplace/cafe24/callback`;
-      } else {
-        redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+      // Use configured redirect URI
+      const redirectUri = process.env.CAFE24_REDIRECT_URI;
+      if (!redirectUri) {
+        return res.status(500).json({ message: "CAFE24_REDIRECT_URI 설정이 필요합니다." });
       }
       
       const authUrl = `https://${mallId}.cafe24api.com/api/v2/oauth/authorize?` +
@@ -1649,43 +1648,76 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
   app.get("/api/marketplace/cafe24/callback", async (req, res) => {
     try {
+      console.log('[CAFE24 CALLBACK] OAuth callback received:', {
+        query: req.query,
+        code: req.query.code ? 'present' : 'missing',
+        state: req.query.state ? 'present' : 'missing'
+      });
+      
       const code = String(req.query.code || '');
       const state = String(req.query.state || '');
       
       if (!code || !state) {
+        console.log('[CAFE24 CALLBACK] Missing code or state');
         return res.redirect('/market-sync?error=invalid_callback');
       }
 
-      // Parse state parameter to get user ID
+      // Verify state parameter matches session (CSRF protection)
+      const sessionState = (req as any).session?.cafe24_oauth_state;
+      if (!sessionState || sessionState !== state) {
+        console.log('[CAFE24 CALLBACK] State mismatch or missing session state');
+        // Clean up session state on error
+        if ((req as any).session?.cafe24_oauth_state) {
+          delete (req as any).session.cafe24_oauth_state;
+        }
+        return res.redirect('/market-sync?error=invalid_state');
+      }
+
+      // Parse state parameter to get user ID and mallId
       let stateData;
       try {
         stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
+        console.log('[CAFE24 CALLBACK] State decoded successfully for user:', stateData.userId);
       } catch (error) {
+        console.log('[CAFE24 CALLBACK] State decode failed:', error);
         return res.redirect('/market-sync?error=invalid_state');
       }
 
       if (!stateData.userId) {
+        console.log('[CAFE24 CALLBACK] Missing userId in state');
+        // Clean up session state on error
+        delete (req as any).session.cafe24_oauth_state;
         return res.redirect('/market-sync?error=missing_user_info');
       }
+
+      // Clear the session state to prevent replay attacks
+      delete (req as any).session.cafe24_oauth_state;
 
       // 환경변수에서 카페24 자격증명 가져오기
       const clientId = process.env.CAFE24_CLIENT_ID;
       const clientSecret = process.env.CAFE24_CLIENT_SECRET;
-      const mallId = process.env.CAFE24_MALL_ID;
+      const mallId = stateData.mallId; // Use mallId from state instead of env
       
       if (!clientId || !clientSecret || !mallId) {
+        console.log('[CAFE24 CALLBACK] Missing credentials:', { clientId: !!clientId, clientSecret: !!clientSecret, mallId: !!mallId });
+        // Clean up session state on error
+        delete (req as any).session.cafe24_oauth_state;
+        return res.redirect('/market-sync?error=config_missing');
+      }
+      
+      console.log('[CAFE24 CALLBACK] Using mallId from state:', mallId);
+
+      // Use configured redirect URI
+      const redirectUri = process.env.CAFE24_REDIRECT_URI;
+      if (!redirectUri) {
+        console.log('[CAFE24 CALLBACK] Missing CAFE24_REDIRECT_URI');
+        // Clean up session state on error
+        delete (req as any).session.cafe24_oauth_state;
         return res.redirect('/market-sync?error=config_missing');
       }
 
-      // 배포 환경 vs 개발 환경 구분
-      let redirectUri;
-      if (process.env.NODE_ENV === 'production' || req.get('host')?.includes('replit.app')) {
-        redirectUri = `https://style-hub-ai-sungbae0613.replit.app/api/marketplace/cafe24/callback`;
-      } else {
-        redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
-      }
-
       // Exchange code for access token
+      console.log('[CAFE24 CALLBACK] Starting token exchange for mallId:', mallId);
       const tokenResponse = await fetch(`https://${mallId}.cafe24api.com/api/v2/oauth/token`, {
         method: 'POST',
         headers: {
@@ -1701,14 +1733,24 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
-        console.error("Token exchange failed:", errorText);
+        console.error('[CAFE24 CALLBACK] Token exchange failed:', {
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText,
+          errorBody: errorText,
+          mallId,
+          redirectUri
+        });
+        // Clean up session state on error
+        delete (req as any).session.cafe24_oauth_state;
         return res.redirect('/market-sync?error=token_exchange_failed');
       }
 
       const tokenData = await tokenResponse.json();
+      console.log('[CAFE24 CALLBACK] Token exchange successful');
       
       // Check if user already has a Cafe24 connection
       const existingConnection = await storage.getMarketplaceConnectionByProvider(stateData.userId, "cafe24");
+      console.log('[CAFE24 CALLBACK] Existing connection check:', existingConnection ? 'found' : 'not found');
       
       const connectionData = {
         userId: stateData.userId,
@@ -1728,15 +1770,22 @@ export async function registerRoutes(app: Express): Promise<Express> {
       if (existingConnection) {
         // Update existing connection
         connection = await storage.updateMarketplaceConnection(existingConnection.id, connectionData);
+        console.log('[CAFE24 CALLBACK] Connection updated for user:', stateData.userId);
       } else {
         // Create new connection
         connection = await storage.createMarketplaceConnection(connectionData);
+        console.log('[CAFE24 CALLBACK] New connection created for user:', stateData.userId);
       }
 
       // Redirect back to frontend with success message
+      console.log('[CAFE24 CALLBACK] Redirecting to /market-sync?cafe24_connected=true');
       res.redirect('/market-sync?cafe24_connected=true');
     } catch (error: any) {
       console.error("Cafe24 OAuth callback error:", error);
+      // Clean up session state on error
+      if ((req as any).session?.cafe24_oauth_state) {
+        delete (req as any).session.cafe24_oauth_state;
+      }
       res.redirect('/market-sync?error=oauth_failed');
     }
   });
