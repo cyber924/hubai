@@ -605,35 +605,43 @@ export async function registerRoutes(app: Express): Promise<Express> {
         case "cafe24":
           filename = "cafe24_products.csv";
           headers = [
-            "상품코드", "상품명", "공급가", "판매가", "소비자가", "재고수량", 
-            "상품요약설명", "상품상세설명", "대표이미지", "추가이미지1", "추가이미지2", "추가이미지3",
-            "카테고리", "브랜드", "제조사", "원산지", "배송비", "무게",
-            "상품옵션", "키워드", "진열상태", "판매상태", "상품상태코드"
+            "상품코드", "자체상품코드", "상품명", "상품 간략설명", "상품 상세설명", "공급가", "판매가", "소비자가", 
+            "적립금", "재고수량", "안전재고", "재고사용", "재고부족시 판매여부", "대표이미지", "작은목록이미지",
+            "목록이미지", "상품상세이미지", "추가이미지1", "추가이미지2", "추가이미지3", "추가이미지4", "추가이미지5",
+            "카테고리분류코드", "브랜드", "제조사", "공급사", "트렌드", "원산지", "상품소재", "색상", "사이즈"
           ];
           csvData = products.map((product, index) => ({
             "상품코드": `SH${(index + 1).toString().padStart(6, '0')}`, // SH000001 형식
+            "자체상품코드": `SH${(index + 1).toString().padStart(6, '0')}`,
             "상품명": product.name,
-            "공급가": product.price, // 공급가와 판매가를 동일하게 설정
+            "상품 간략설명": product.description ? product.description.substring(0, 100) : "",
+            "상품 상세설명": product.description || "",
+            "공급가": product.price,
             "판매가": product.price,
             "소비자가": product.originalPrice || product.price,
+            "적립금": "0",
             "재고수량": "999", // 기본 재고
-            "상품요약설명": product.description ? product.description.substring(0, 100) : "",
-            "상품상세설명": product.description || "",
+            "안전재고": "10",
+            "재고사용": "T",
+            "재고부족시 판매여부": "T",
             "대표이미지": product.imageUrl || "",
+            "작은목록이미지": product.imageUrl || "",
+            "목록이미지": product.imageUrl || "",
+            "상품상세이미지": product.imageUrl || "",
             "추가이미지1": product.imageUrls && product.imageUrls[0] ? product.imageUrls[0] : "",
             "추가이미지2": product.imageUrls && product.imageUrls[1] ? product.imageUrls[1] : "",
             "추가이미지3": product.imageUrls && product.imageUrls[2] ? product.imageUrls[2] : "",
-            "카테고리": product.category || "패션의류",
+            "추가이미지4": "",
+            "추가이미지5": "",
+            "카테고리분류코드": product.category || "패션의류",
             "브랜드": product.brand || "StyleHub",
             "제조사": product.brand || "StyleHub",
+            "공급사": product.brand || "StyleHub",
+            "트렌드": "",
             "원산지": "대한민국",
-            "배송비": "2500", // 기본 배송비
-            "무게": "0.5", // 기본 무게 (kg)
-            "상품옵션": "", // 추후 확장
-            "키워드": product.tags ? product.tags.join(",") : "",
-            "진열상태": "진열함",
-            "판매상태": "판매함",
-            "상품상태코드": product.status === "registered" ? "A" : "N" // A=판매중, N=신상품
+            "상품소재": "",
+            "색상": "",
+            "사이즈": ""
           }));
           break;
 
