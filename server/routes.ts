@@ -265,8 +265,58 @@ const upload = multer({
   }
 });
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<Express> {
   
+  // Health check endpoint to verify route registration
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      message: "StyleHub API is running"
+    });
+  });
+
+  // Cafe24 app installation endpoint (unauthenticated)
+  app.get("/api/marketplace/cafe24/install", async (req, res) => {
+    try {
+      const { mall_id, user_id, user_name, hmac, timestamp, lang, nation, shop_no, user_type } = req.query;
+      
+      console.log('[CAFE24 APP] 앱 설치/인증 요청 수신:', {
+        mall_id,
+        user_id,
+        user_name: decodeURIComponent(String(user_name || '')),
+        timestamp,
+        lang,
+        nation,
+        shop_no,
+        user_type
+      });
+
+      if (!mall_id || !user_id) {
+        return res.status(400).json({ 
+          message: "mall_id와 user_id가 필요합니다.",
+          status: "error"
+        });
+      }
+
+      // TODO: HMAC 검증 추가 필요
+      // const clientSecret = process.env.CAFE24_CLIENT_SECRET;
+      // if (!verifyHmac(req.query, clientSecret)) {
+      //   return res.status(401).json({ message: "HMAC 검증 실패" });
+      // }
+
+      res.status(200).json({
+        message: "카페24 앱이 성공적으로 설치되었습니다.",
+        status: "success",
+        mall_id,
+        user_id
+      });
+    } catch (error: any) {
+      console.error('[CAFE24 APP] 앱 설치 오류:', error);
+      res.status(500).json({ message: "앱 설치 중 오류가 발생했습니다." });
+    }
+  });
+
   // Authentication routes
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -1082,7 +1132,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const products = await storage.getProducts(100, 0);
       const report = await generateTrendReport(products);
-      res.json(report);
+      res.json({
+        timestamp: new Date().toISOString(),
+        version: "v2.0",
+        data: report
+      });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to generate trend report: " + error.message });
     }
@@ -1520,6 +1574,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Cafe24 앱 설치/인증 엔드포인트 (카페24에서 호출)
+  app.get("/api/marketplace/cafe24", async (req, res) => {
+    try {
+      const { mall_id, user_id, user_name, hmac, timestamp, lang, nation, shop_no, user_type } = req.query;
+      
+      console.log('[CAFE24 APP] 앱 설치/인증 요청 수신:', {
+        mall_id,
+        user_id,
+        user_name: decodeURIComponent(String(user_name || '')),
+        timestamp,
+        lang,
+        nation,
+        shop_no,
+        user_type
+      });
+
+      // 카페24 앱 설치 성공 응답
+      res.status(200).json({
+        message: "카페24 앱이 성공적으로 설치되었습니다.",
+        status: "success",
+        mall_id,
+        user_id
+      });
+    } catch (error: any) {
+      console.error('[CAFE24 APP] 앱 설치 오류:', error);
+      res.status(500).json({ message: "앱 설치 중 오류가 발생했습니다." });
+    }
+  });
+
+  // Debug route to test if new routes work
+  app.get("/api/debug/test", async (req, res) => {
+    res.json({ message: "Debug route working", timestamp: new Date().toISOString() });
+  });
+
   // Cafe24 OAuth API
   app.post("/api/marketplace/cafe24/auth", requireAuth, async (req, res) => {
     try {
@@ -1776,7 +1864,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
-
-  return httpServer;
+  // Return app instead of creating a new server - let index.ts handle server creation
+  return app;
 }
