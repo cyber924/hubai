@@ -47,6 +47,8 @@ export default function ProductManagement() {
       if (statusFilter !== 'all') params.status = statusFilter;
       return api.getProducts(params);
     },
+    staleTime: 30000, // 30초 동안 fresh 상태 유지
+    retry: 3, // 실패시 3번 재시도
   });
 
   // Real-time polling for registration jobs
@@ -717,6 +719,9 @@ export default function ProductManagement() {
             <CardContent>
               {isLoading ? (
                 <div className="space-y-4">
+                  <p className="text-center text-muted-foreground korean-text py-8">
+                    상품을 불러오는 중... ({products?.length || 0}개 로드됨)
+                  </p>
                   {Array.from({ length: 8 }).map((_, i) => (
                     <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg animate-pulse">
                       <div className="w-16 h-16 bg-muted rounded-lg"></div>
