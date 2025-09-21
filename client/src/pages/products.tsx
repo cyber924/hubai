@@ -37,6 +37,10 @@ export default function Products() {
   // Fetch products
   const { data: products = [], isLoading, error } = useQuery<Product[]>({
     queryKey: ["/api/products"],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '1000' });
+      return fetch(`/api/products?${params}`).then(res => res.json());
+    },
   });
 
   // Fetch marketplace connections
