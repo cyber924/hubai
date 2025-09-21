@@ -51,7 +51,7 @@ export const CAFE24_MAPPING_PROFILE: MappingProfile = {
   marketplace: 'cafe24',
   mappings: [
     {
-      sourceField: 'product_name',
+      sourceField: 'name',
       targetField: '상품명',
       transformer: 'toString',
       required: true,
@@ -65,7 +65,7 @@ export const CAFE24_MAPPING_PROFILE: MappingProfile = {
       validator: 'positive'
     },
     {
-      sourceField: 'original_price',
+      sourceField: 'originalPrice',
       targetField: '정가',
       transformer: 'toPrice',
       defaultValue: 0
@@ -90,47 +90,29 @@ export const CAFE24_MAPPING_PROFILE: MappingProfile = {
       options: { maxLength: 1000 }
     },
     {
-      sourceField: 'images',
+      sourceField: 'imageUrls',
       targetField: '이미지URL',
       transformer: 'toArray',
       options: { separator: ',', unique: true }
     },
     {
-      sourceField: 'stock',
-      targetField: '재고수량',
-      transformer: 'toNumber',
-      defaultValue: 0,
-      validator: 'positive'
-    },
-    {
-      sourceField: 'is_sale',
+      sourceField: 'status',
       targetField: '판매상태',
-      transformer: 'toBoolean',
-      defaultValue: true
-    },
-    {
-      sourceField: 'weight',
-      targetField: '무게',
-      transformer: 'toNumber',
-      defaultValue: 0
-    },
-    {
-      sourceField: 'shipping_fee',
-      targetField: '배송비',
-      transformer: 'toPrice',
-      defaultValue: 0
-    },
-    {
-      sourceField: 'origin_country',
-      targetField: '원산지',
       transformer: 'toString',
-      defaultValue: '상품상세참조'
+      defaultValue: '판매중'
     },
     {
-      sourceField: 'material',
-      targetField: '소재',
+      sourceField: 'source',
+      targetField: '입점몰',
       transformer: 'toString',
-      defaultValue: '상품상세참조'
+      defaultValue: '기타'
+    },
+    {
+      sourceField: 'tags',
+      targetField: '태그',
+      transformer: 'toArray',
+      options: { separator: ',', unique: true },
+      defaultValue: []
     },
     {
       sourceField: 'color',
