@@ -727,115 +727,7 @@ export default function MarketSync() {
           ))}
         </div>
 
-        {/* Sync Status */}
-        <Card className="mb-8">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="korean-text">동기화 현황</CardTitle>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="korean-text" 
-                onClick={() => {
-                  queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
-                  queryClient.invalidateQueries({ queryKey: ['/api/marketplace/connections'] });
-                  queryClient.invalidateQueries({ queryKey: ['/api/products', 'registered'] });
-                }}
-                data-testid="button-refresh-sync"
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                새로고침
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg animate-pulse">
-                    <div className="w-12 h-12 bg-muted rounded"></div>
-                    <div className="flex-1">
-                      <div className="h-4 bg-muted rounded w-1/3 mb-2"></div>
-                      <div className="h-3 bg-muted rounded w-1/2"></div>
-                    </div>
-                    <div className="h-6 w-20 bg-muted rounded"></div>
-                  </div>
-                ))}
-              </div>
-            ) : syncs && syncs.length > 0 ? (
-              <div className="space-y-4">
-                {syncs.map((sync: any, index: number) => (
-                  <div key={sync.id || index} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(sync.status)}
-                      <span className="text-2xl">
-                        {marketplaces.find(m => m.id === sync.marketplace)?.icon || "🛍️"}
-                      </span>
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium korean-text" data-testid={`text-sync-product-${index}`}>
-                        {products?.find((p: any) => p.id === sync.productId)?.name || "상품명 불러오는 중..."}
-                      </p>
-                      <p className="text-sm text-muted-foreground korean-text">
-                        {marketplaces.find(m => m.id === sync.marketplace)?.name || sync.marketplace}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      {getStatusBadge(sync.status)}
-                      {sync.marketplaceProductId && (
-                        <Button variant="ghost" size="sm" data-testid={`button-view-marketplace-${index}`}>
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <RefreshCw className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold korean-text mb-2">동기화 내역이 없습니다</h3>
-                <p className="text-muted-foreground korean-text mb-4">
-                  등록된 상품을 마켓플레이스에 동기화해보세요.
-                </p>
-                <Button className="korean-text" data-testid="button-start-sync">
-                  동기화 시작하기
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Integration Guide */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="korean-text">연동 가이드</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-semibold korean-text mb-2">자동 동기화 설정</h4>
-                <ul className="space-y-2 text-sm text-muted-foreground korean-text">
-                  <li>• API 키 설정으로 자동 업로드</li>
-                  <li>• 실시간 재고 동기화</li>
-                  <li>• 가격 정보 자동 업데이트</li>
-                  <li>• 주문 상태 모니터링</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold korean-text mb-2">수동 업로드</h4>
-                <ul className="space-y-2 text-sm text-muted-foreground korean-text">
-                  <li>• CSV/Excel 파일 다운로드</li>
-                  <li>• 각 마켓별 맞춤 포맷 제공</li>
-                  <li>• 대량 상품 일괄 업로드</li>
-                  <li>• 업로드 결과 확인</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Data Transform Section */}
+        {/* Universal Format - 마켓플레이스 템플릿 매핑 */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center korean-text">
@@ -1178,6 +1070,114 @@ export default function MarketSync() {
                 </div>
               </TabsContent>
             </Tabs>
+          </CardContent>
+        </Card>
+
+        {/* Sync Status */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="korean-text">동기화 현황</CardTitle>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="korean-text" 
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
+                  queryClient.invalidateQueries({ queryKey: ['/api/marketplace/connections'] });
+                  queryClient.invalidateQueries({ queryKey: ['/api/products', 'registered'] });
+                }}
+                data-testid="button-refresh-sync"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                새로고침
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg animate-pulse">
+                    <div className="w-12 h-12 bg-muted rounded"></div>
+                    <div className="flex-1">
+                      <div className="h-4 bg-muted rounded w-1/3 mb-2"></div>
+                      <div className="h-3 bg-muted rounded w-1/2"></div>
+                    </div>
+                    <div className="h-6 w-20 bg-muted rounded"></div>
+                  </div>
+                ))}
+              </div>
+            ) : syncs && syncs.length > 0 ? (
+              <div className="space-y-4">
+                {syncs.map((sync: any, index: number) => (
+                  <div key={sync.id || index} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(sync.status)}
+                      <span className="text-2xl">
+                        {marketplaces.find(m => m.id === sync.marketplace)?.icon || "🛍️"}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium korean-text" data-testid={`text-sync-product-${index}`}>
+                        {products?.find((p: any) => p.id === sync.productId)?.name || "상품명 불러오는 중..."}
+                      </p>
+                      <p className="text-sm text-muted-foreground korean-text">
+                        {marketplaces.find(m => m.id === sync.marketplace)?.name || sync.marketplace}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      {getStatusBadge(sync.status)}
+                      {sync.marketplaceProductId && (
+                        <Button variant="ghost" size="sm" data-testid={`button-view-marketplace-${index}`}>
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <RefreshCw className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold korean-text mb-2">동기화 내역이 없습니다</h3>
+                <p className="text-muted-foreground korean-text mb-4">
+                  등록된 상품을 마켓플레이스에 동기화해보세요.
+                </p>
+                <Button className="korean-text" data-testid="button-start-sync">
+                  동기화 시작하기
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Integration Guide */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="korean-text">연동 가이드</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-semibold korean-text mb-2">자동 동기화 설정</h4>
+                <ul className="space-y-2 text-sm text-muted-foreground korean-text">
+                  <li>• API 키 설정으로 자동 업로드</li>
+                  <li>• 실시간 재고 동기화</li>
+                  <li>• 가격 정보 자동 업데이트</li>
+                  <li>• 주문 상태 모니터링</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold korean-text mb-2">수동 업로드</h4>
+                <ul className="space-y-2 text-sm text-muted-foreground korean-text">
+                  <li>• CSV/Excel 파일 다운로드</li>
+                  <li>• 각 마켓별 맞춤 포맷 제공</li>
+                  <li>• 대량 상품 일괄 업로드</li>
+                  <li>• 업로드 결과 확인</li>
+                </ul>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
