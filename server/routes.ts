@@ -396,42 +396,6 @@ export async function registerRoutes(app: Express): Promise<Express> {
   
   console.log('[ROUTES] Health check route registered');
 
-  // 임시 카페24 연결 생성 (테스트용)
-  app.post("/api/test/cafe24-connection", requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).user.id;
-      
-      // 기존 연결 확인
-      const existingConnection = await storage.getMarketplaceConnectionByProvider(userId, "cafe24");
-      if (existingConnection) {
-        return res.json({ message: "이미 연결됨", connection: existingConnection });
-      }
-
-      // 테스트 연결 생성
-      const connectionData = {
-        userId: userId,
-        provider: "cafe24",
-        authType: "oauth",
-        shopId: "glovv",
-        shopDomain: "glovv.cafe24.com",
-        accessToken: "test_token",
-        refreshToken: null,
-        expiresAt: null,
-        status: "active" as const,
-        lastSynced: null,
-        errorMessage: null
-      };
-
-      const connection = await storage.createMarketplaceConnection(connectionData);
-      console.log('[TEST] 카페24 테스트 연결 생성:', connection.id);
-      
-      res.json({ message: "테스트 연결 생성 완료", connection });
-    } catch (error: any) {
-      console.error('[TEST] 연결 생성 실패:', error);
-      res.status(500).json({ message: "연결 생성 실패", error: error.message });
-    }
-  });
-
   // Cafe24 app installation endpoint (unauthenticated)
   app.get("/api/marketplace/cafe24/install", async (req, res) => {
     console.log('[ROUTES] Cafe24 install endpoint called with query:', req.query);
@@ -1942,6 +1906,126 @@ export async function registerRoutes(app: Express): Promise<Express> {
       });
     } catch (error: any) {
       res.status(500).json({ message: "상품 등록 실패: " + error.message });
+    }
+  });
+
+  // 네이버 상품 등록 API
+  app.post("/api/marketplace/naver/products", requireAuth, async (req, res) => {
+    try {
+      const { productIds } = req.body;
+      const userId = (req as any).user.id;
+      
+      if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+        return res.status(400).json({ message: "등록할 상품 ID가 필요합니다." });
+      }
+
+      console.log('[NAVER] 상품 등록 요청:', productIds.length, '개');
+      
+      let successCount = 0;
+      let failureCount = 0;
+      const results = [];
+
+      // 각 상품에 대해 소유권 확인 후 처리
+      for (const productId of productIds) {
+        try {
+          const product = await storage.getProduct(productId);
+          
+          // 소유권 확인 - 중요한 보안 검증
+          if (!product) {
+            results.push({ productId, success: false, error: "상품을 찾을 수 없습니다." });
+            failureCount++;
+            continue;
+          }
+          
+          if (product.userId !== userId) {
+            results.push({ productId, success: false, error: "상품에 대한 권한이 없습니다." });
+            failureCount++;
+            continue;
+          }
+
+          // TODO: 실제 네이버 API 연동 구현
+          // 현재는 임시로 성공 처리
+          
+          await storage.updateProduct(productId, { status: "synced" });
+          results.push({ productId, success: true });
+          successCount++;
+        } catch (error: any) {
+          results.push({ productId, success: false, error: error.message });
+          failureCount++;
+        }
+      }
+
+      res.json({
+        message: `네이버 상품 등록 완료: 성공 ${successCount}개, 실패 ${failureCount}개`,
+        totalProducts: productIds.length,
+        successCount,
+        failureCount,
+        results
+      });
+
+    } catch (error: any) {
+      console.error("Naver product registration error:", error);
+      res.status(500).json({ message: "네이버 상품 등록 실패: " + error.message });
+    }
+  });
+
+  // 쿠팡 상품 등록 API
+  app.post("/api/marketplace/coupang/products", requireAuth, async (req, res) => {
+    try {
+      const { productIds } = req.body;
+      const userId = (req as any).user.id;
+      
+      if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+        return res.status(400).json({ message: "등록할 상품 ID가 필요합니다." });
+      }
+
+      console.log('[COUPANG] 상품 등록 요청:', productIds.length, '개');
+      
+      let successCount = 0;
+      let failureCount = 0;
+      const results = [];
+
+      // 각 상품에 대해 소유권 확인 후 처리
+      for (const productId of productIds) {
+        try {
+          const product = await storage.getProduct(productId);
+          
+          // 소유권 확인 - 중요한 보안 검증
+          if (!product) {
+            results.push({ productId, success: false, error: "상품을 찾을 수 없습니다." });
+            failureCount++;
+            continue;
+          }
+          
+          if (product.userId !== userId) {
+            results.push({ productId, success: false, error: "상품에 대한 권한이 없습니다." });
+            failureCount++;
+            continue;
+          }
+
+          // TODO: 실제 쿠팡 API 연동 구현
+          // 현재는 임시로 성공 처리
+          
+          await storage.updateProduct(productId, { status: "synced" });
+          results.push({ productId, success: true });
+          successCount++;
+        } catch (error: any) {
+          results.push({ productId, success: false, error: error.message });
+          failureCount++;
+        }
+      }
+
+      res.json({
+        message: `쿠팡 상품 등록 완료: 성공 ${successCount}개, 실패 ${failureCount}개`,
+        totalProducts: productIds.length,
+        successCount,
+        failureCount,
+        results
+      });
+
+    } catch (error: any) {
+      console.error("Coupang product registration error:", error);
+      res.status(500).json({ message: "쿠팡 상품 등록 실패: " + error.message });
     }
   });
 

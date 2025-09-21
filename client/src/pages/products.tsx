@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Search, ShoppingCart, TrendingUp, Package, ExternalLink } from "lucide-react";
 import type { Product } from "@shared/schema";
@@ -17,6 +18,8 @@ export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showMarketplaceSelect, setShowMarketplaceSelect] = useState(false);
+  const [selectedMarketplace, setSelectedMarketplace] = useState<string>("");
 
   // 카페24 연결 성공 메시지 처리
   useEffect(() => {
@@ -41,29 +44,54 @@ export default function Products() {
     queryKey: ["/api/marketplace/connections"],
   });
 
-  // 카페24 상품 등록 뮤테이션
-  const cafe24SyncMutation = useMutation({
-    mutationFn: async (productIds: string[]) => {
-      const response = await apiRequest('POST', '/api/marketplace/cafe24/products', { productIds });
+  // 마켓플레이스 등록 뮤테이션
+  const marketplaceRegisterMutation = useMutation({
+    mutationFn: async ({ marketplace, productIds }: { marketplace: string, productIds: string[] }) => {
+      const response = await apiRequest('POST', `/api/marketplace/${marketplace}/products`, { productIds });
       return response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
       queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
+      const marketplaceName = selectedMarketplace === 'cafe24' ? '카페24' : 
+                             selectedMarketplace === 'naver' ? '네이버' : 
+                             selectedMarketplace === 'coupang' ? '쿠팡' : selectedMarketplace;
       toast({
         title: "등록 완료",
-        description: `${data.successCount || 0}개 상품이 성공적으로 카페24에 등록되었습니다.`,
+        description: `${data.successCount || 0}개 상품이 성공적으로 ${marketplaceName}에 등록되었습니다.`,
       });
       setSelectedProducts([]);
+      setShowMarketplaceSelect(false);
+      setSelectedMarketplace("");
     },
     onError: (error: any) => {
+      const marketplaceName = selectedMarketplace === 'cafe24' ? '카페24' : 
+                             selectedMarketplace === 'naver' ? '네이버' : 
+                             selectedMarketplace === 'coupang' ? '쿠팡' : selectedMarketplace;
       toast({
         title: "등록 실패",
-        description: error.message || "카페24 상품 등록 중 오류가 발생했습니다.",
+        description: error.message || `${marketplaceName} 상품 등록 중 오류가 발생했습니다.`,
         variant: "destructive",
       });
     }
   });
+
+  // 마켓플레이스 등록 처리
+  const handleMarketplaceRegister = () => {
+    if (!selectedMarketplace || selectedProducts.length === 0) {
+      toast({
+        title: "선택 필요",
+        description: "마켓플레이스와 상품을 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    marketplaceRegisterMutation.mutate({
+      marketplace: selectedMarketplace,
+      productIds: selectedProducts
+    });
+  };
 
   // Filter products based on search and status
   const filteredProducts = products.filter(product => {
@@ -226,7 +254,7 @@ export default function Products() {
         <div>
           <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">상품 관리</h1>
           <p className="text-muted-foreground" data-testid="text-page-description">
-            수집된 상품들을 확인하고 카페24에 등록하세요
+            수집된 상품들을 확인하고 마켓플레이스에 등록하세요
           </p>
         </div>
         <div className="mt-4 lg:mt-0 flex flex-col sm:flex-row gap-4">
@@ -271,18 +299,16 @@ export default function Products() {
               >
                 선택 해제
               </Button>
-              {connections.some(c => c.provider === "cafe24") && (
-                <Button 
-                  size="sm" 
-                  className="bg-orange-600 hover:bg-orange-700"
-                  onClick={() => cafe24SyncMutation.mutate(selectedProducts)}
-                  disabled={cafe24SyncMutation.isPending || selectedProducts.length === 0}
-                  data-testid="button-sync-to-cafe24"
-                >
-                  <ShoppingCart className={`h-4 w-4 mr-2 ${cafe24SyncMutation.isPending ? 'animate-spin' : ''}`} />
-                  {cafe24SyncMutation.isPending ? '등록 중...' : '카페24에 등록'}
-                </Button>
-              )}
+              <Button 
+                size="sm" 
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => setShowMarketplaceSelect(true)}
+                disabled={selectedProducts.length === 0}
+                data-testid="button-register-marketplace"
+              >
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                마켓플레이스에 등록
+              </Button>
             </div>
           </div>
         </div>
@@ -365,6 +391,79 @@ export default function Products() {
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* 마켓플레이스 선택 모달 */}
+      <Dialog open={showMarketplaceSelect} onOpenChange={setShowMarketplaceSelect}>
+        <DialogContent data-testid="dialog-marketplace-select">
+          <DialogHeader>
+            <DialogTitle>마켓플레이스 선택</DialogTitle>
+            <DialogDescription>
+              선택한 {selectedProducts.length}개 상품을 등록할 마켓플레이스를 선택해주세요.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 gap-3 py-4">
+            <div 
+              className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedMarketplace === 'cafe24' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}
+              onClick={() => setSelectedMarketplace('cafe24')}
+              data-testid="option-cafe24"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="text-2xl">☕</div>
+                <div>
+                  <h3 className="font-medium">카페24</h3>
+                  <p className="text-sm text-muted-foreground">Korean e-commerce platform</p>
+                </div>
+              </div>
+            </div>
+            
+            <div 
+              className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedMarketplace === 'naver' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}
+              onClick={() => setSelectedMarketplace('naver')}
+              data-testid="option-naver"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="text-2xl">🛍️</div>
+                <div>
+                  <h3 className="font-medium">네이버 스마트스토어</h3>
+                  <p className="text-sm text-muted-foreground">Korea's largest shopping platform</p>
+                </div>
+              </div>
+            </div>
+            
+            <div 
+              className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedMarketplace === 'coupang' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+              onClick={() => setSelectedMarketplace('coupang')}
+              data-testid="option-coupang"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="text-2xl">📦</div>
+                <div>
+                  <h3 className="font-medium">쿠팡</h3>
+                  <p className="text-sm text-muted-foreground">Fast delivery e-commerce</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowMarketplaceSelect(false)}
+              data-testid="button-cancel-marketplace"
+            >
+              취소
+            </Button>
+            <Button 
+              onClick={handleMarketplaceRegister}
+              disabled={!selectedMarketplace || marketplaceRegisterMutation.isPending}
+              data-testid="button-confirm-marketplace"
+            >
+              {marketplaceRegisterMutation.isPending ? '등록 중...' : '등록하기'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
