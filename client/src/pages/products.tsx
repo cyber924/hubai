@@ -28,6 +28,30 @@ export default function Products() {
     queryKey: ["/api/marketplace/connections"],
   });
 
+  // 카페24 상품 등록 뮤테이션
+  const cafe24SyncMutation = useMutation({
+    mutationFn: async (productIds: string[]) => {
+      const response = await apiRequest('POST', '/api/marketplace/cafe24/products', { productIds });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
+      toast({
+        title: "등록 완료",
+        description: `${data.successCount || 0}개 상품이 성공적으로 카페24에 등록되었습니다.`,
+      });
+      setSelectedProducts([]);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "등록 실패",
+        description: error.message || "카페24 상품 등록 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  });
+
   // Filter products based on search and status
   const filteredProducts = products.filter(product => {
     const matchesSearch = !searchQuery || 
@@ -238,10 +262,12 @@ export default function Products() {
                 <Button 
                   size="sm" 
                   className="bg-orange-600 hover:bg-orange-700"
+                  onClick={() => cafe24SyncMutation.mutate(selectedProducts)}
+                  disabled={cafe24SyncMutation.isPending || selectedProducts.length === 0}
                   data-testid="button-sync-to-cafe24"
                 >
-                  <ShoppingCart className="h-4 w-4 mr-2" />
-                  카페24에 등록
+                  <ShoppingCart className={`h-4 w-4 mr-2 ${cafe24SyncMutation.isPending ? 'animate-spin' : ''}`} />
+                  {cafe24SyncMutation.isPending ? '등록 중...' : '카페24에 등록'}
                 </Button>
               )}
             </div>
