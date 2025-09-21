@@ -9,6 +9,7 @@ import Home from "@/pages/home";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import AiPicks from "@/pages/ai-picks";
+import Products from "@/pages/products";
 import MyStore from "@/pages/my-store";
 import MarketSync from "@/pages/market-sync";
 import Pricing from "@/pages/pricing";
@@ -34,6 +35,11 @@ function Router() {
       <Route path="/ai-picks">
         <ProtectedRoute>
           <AiPicks />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/products">
+        <ProtectedRoute>
+          <Products />
         </ProtectedRoute>
       </Route>
       <Route path="/my-store">
