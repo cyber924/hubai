@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import csv from "csv-parser";
+import { CSVParsingEngine } from "./services/csvEngine";
 import fs from "fs";
 import { promises as fsPromises } from "fs";
 import { storage } from "./storage";
@@ -2079,54 +2080,24 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
       console.log('[TEMPLATE] 업로드:', provider, name);
       
-      // 비동기 CSV 파일 분석
-      const csvContent = await fsPromises.readFile(file.path, 'utf-8');
+      // 비동기 CSV 파일 분석 (Buffer로 읽어 인코딩 감지)
+      const csvBuffer = await fsPromises.readFile(file.path);
       
-      // BOM 제거
-      const cleanContent = csvContent.replace(/^\uFEFF/, '');
-      const lines = cleanContent.split(/\r?\n/).filter(line => line.trim());
-      
-      if (lines.length === 0) {
+      // CSV 파싱 엔진 사용 (Buffer에서 인코딩 감지)
+      let parseResult;
+      try {
+        parseResult = CSVParsingEngine.analyzeCSVFromBuffer(csvBuffer, {
+          maxSampleRows: 5,
+          strictValidation: false,
+          supportedDelimiters: [',', '\t', ';', '|'],
+          supportedEncodings: ['UTF-8', 'EUC-KR']
+        });
+      } catch (error: any) {
         await fsPromises.unlink(file.path);
-        return res.status(400).json({ message: "빈 CSV 파일입니다." });
+        return res.status(400).json({ message: "CSV 파일 분석 실패: " + error.message });
       }
 
-      // 구분자 감지 개선
-      const firstLine = lines[0];
-      let delimiter = ',';
-      if (firstLine.includes('\t') && firstLine.split('\t').length > firstLine.split(',').length) {
-        delimiter = '\t';
-      }
-
-      // CSV 파싱 개선 (따옴표 처리)
-      const parseCSVLine = (line: string, delimiter: string): string[] => {
-        const result: string[] = [];
-        let current = '';
-        let inQuotes = false;
-        
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i];
-          const nextChar = line[i + 1];
-          
-          if (char === '"') {
-            if (inQuotes && nextChar === '"') {
-              current += '"';
-              i++; // 다음 따옴표 건너뛰기
-            } else {
-              inQuotes = !inQuotes;
-            }
-          } else if (char === delimiter && !inQuotes) {
-            result.push(current.trim());
-            current = '';
-          } else {
-            current += char;
-          }
-        }
-        result.push(current.trim());
-        return result;
-      };
-
-      const headers = parseCSVLine(firstLine, delimiter);
+      const { headers, delimiter, encoding, fingerprint, hasQuotedFields, isConsistent, lineCount } = parseResult;
       
       // 필수 헤더 추정 (상품명, 가격 관련 필드)
       const requiredHeaders = headers.filter(header => 
@@ -2134,10 +2105,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         header.includes('가격') || header.includes('판매가') || header.includes('공급가')
       );
 
-      // 지문 생성 개선 (delimiter와 encoding 포함)
-      const fingerprint = crypto.createHash('md5')
-        .update(`${headers.sort().join('|')}|${delimiter}|UTF-8`)
-        .digest('hex');
+      console.log(`[CSV ENGINE] 분석 완료: ${headers.length}개 헤더, 구분자: "${delimiter}", 인코딩: ${encoding}, 일관성: ${isConsistent}`);
 
       // 기존 템플릿 확인
       const existingTemplate = await storage.getMarketplaceTemplateByFingerprint(fingerprint);
@@ -2154,11 +2122,15 @@ export async function registerRoutes(app: Express): Promise<Express> {
         provider,
         name,
         description: description || null,
-        encoding: "UTF-8",
+        encoding,
         delimiter,
         headers: headers,
         requiredHeaders: requiredHeaders,
-        constraints: null,
+        constraints: {
+          hasQuotedFields,
+          isConsistent,
+          lineCount
+        },
         fingerprint,
         isOfficial: false,
         maxImages: 5
@@ -2580,23 +2552,11 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return row;
       });
 
-      // CSV 생성
+      // CSV 생성 (새로운 엔진 사용)
       const headers = template.headers as string[];
       const delimiter = template.delimiter || ',';
       
-      // CSV 헤더
-      let csv = headers.map(h => `"${h}"`).join(delimiter) + '\n';
-      
-      // CSV 데이터
-      csvData.forEach(row => {
-        const values = headers.map(header => {
-          const value = row[header] || '';
-          // CSV injection 방지
-          const sanitized = String(value).replace(/"/g, '""');
-          return `"${sanitized}"`;
-        });
-        csv += values.join(delimiter) + '\n';
-      });
+      const csv = CSVParsingEngine.generateCSV(csvData, headers, delimiter);
 
       // 파일명 생성
       const timestamp = new Date().toISOString().split('T')[0];
