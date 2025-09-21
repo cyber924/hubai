@@ -751,7 +751,7 @@ export default function ProductManagement() {
                   <p className="text-center text-muted-foreground korean-text py-8">
                     상품을 불러오는 중... ({products?.length || 0}개 로드됨)
                   </p>
-                  {Array.from({ length: 8 }).map((_, i) => (
+                  {Array.from({ length: 50 }).map((_, i) => (
                     <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg animate-pulse">
                       <div className="w-16 h-16 bg-muted rounded-lg"></div>
                       <div className="flex-1">
@@ -881,14 +881,21 @@ export default function ProductManagement() {
                   
                   {/* 페이지네이션 UI */}
                   {totalPages > 1 && (
-                    <div className="flex items-center justify-center space-x-2 pt-6 border-t">
+                    <div className="flex items-center justify-center space-x-2 pt-6 border-t bg-background relative z-10">
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => handlePageChange(currentPage - 1)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handlePageChange(currentPage - 1);
+                        }}
                         disabled={currentPage === 1}
-                        className="korean-text"
+                        className="korean-text bg-background hover:bg-muted"
                         data-testid="button-prev-page"
+                        role="button"
+                        tabIndex={0}
                       >
                         <ChevronLeft className="h-4 w-4 mr-1" />
                         이전
@@ -898,11 +905,19 @@ export default function ProductManagement() {
                         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                           <Button
                             key={page}
+                            type="button"
                             variant={currentPage === page ? "default" : "outline"}
                             size="sm"
-                            onClick={() => handlePageChange(page)}
-                            className="w-10 h-10"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handlePageChange(page);
+                            }}
+                            className="w-10 h-10 bg-background hover:bg-muted"
                             data-testid={`button-page-${page}`}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`페이지 ${page}로 이동`}
                           >
                             {page}
                           </Button>
@@ -910,12 +925,19 @@ export default function ProductManagement() {
                       </div>
                       
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => handlePageChange(currentPage + 1)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handlePageChange(currentPage + 1);
+                        }}
                         disabled={currentPage === totalPages}
-                        className="korean-text"
+                        className="korean-text bg-background hover:bg-muted"
                         data-testid="button-next-page"
+                        role="button"
+                        tabIndex={0}
                       >
                         다음
                         <ChevronRight className="h-4 w-4 ml-1" />
