@@ -1,11 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { RefreshCw, Download, ExternalLink, CheckCircle, Clock, AlertCircle, Settings, Link as LinkIcon, Trash2, Wifi, WifiOff } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RefreshCw, Download, ExternalLink, CheckCircle, Clock, AlertCircle, Settings, Link as LinkIcon, Trash2, Wifi, WifiOff, Upload, FileText, Eye, ArrowRight, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -17,8 +22,20 @@ export default function MarketSync() {
   ]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [showCafe24Dialog, setShowCafe24Dialog] = useState<boolean>(false);
+  
+  // 데이터 변환 관련 상태
+  const [uploadedTemplate, setUploadedTemplate] = useState<any>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [customProfile, setCustomProfile] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [selectedTransformMarketplace, setSelectedTransformMarketplace] = useState<string>("cafe24");
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 스타일허브용 컬럼 옵션들
   const availableColumns = [
@@ -329,6 +346,165 @@ export default function MarketSync() {
       return;
     }
     cafe24SyncMutation.mutate(selectedProducts);
+  };
+
+  // ========================
+  // 데이터 변환 관련 함수들
+  // ========================
+
+  // 매핑 프로필 조회
+  const { data: mappingProfiles } = useQuery({
+    queryKey: ['/api/data-transform/profiles', selectedTransformMarketplace],
+    queryFn: async () => {
+      const response = await fetch(`/api/data-transform/profiles?marketplace=${selectedTransformMarketplace}`, {
+        credentials: 'include'
+      });
+      return response.json();
+    },
+  });
+
+  // 템플릿 업로드 처리
+  const handleTemplateUpload = async (file: File) => {
+    if (!file) return;
+    
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('template', file);
+      formData.append('marketplace', selectedTransformMarketplace);
+
+      const response = await fetch('/api/data-transform/upload-template', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('템플릿 업로드 실패');
+      
+      const result = await response.json();
+      setUploadedTemplate(result);
+      
+      toast({
+        title: "업로드 완료",
+        description: `${result.headers?.length || 0}개 필드가 감지되었습니다.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "업로드 실패",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // 미리보기 생성
+  const handlePreview = async () => {
+    if (!selectedProfileId && !customProfile) {
+      toast({
+        title: "프로필 선택 필요",
+        description: "매핑 프로필을 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsPreviewing(true);
+    try {
+      // 샘플 상품 데이터 가져오기 (최대 10개)
+      const sampleProducts = products?.slice(0, 10) || [];
+      
+      const response = await fetch('/api/data-transform/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileId: selectedProfileId || undefined,
+          customProfile: customProfile || undefined,
+          sampleData: sampleProducts
+        }),
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('미리보기 생성 실패');
+      
+      const result = await response.json();
+      setPreviewData(result);
+      
+      toast({
+        title: "미리보기 생성 완료",
+        description: `${result.successCount}개 상품 변환 완료`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "미리보기 실패",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  // CSV 내보내기
+  const handleExport = async () => {
+    if (!selectedProfileId && !customProfile) {
+      toast({
+        title: "프로필 선택 필요",
+        description: "매핑 프로필을 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!products || products.length === 0) {
+      toast({
+        title: "상품 없음",
+        description: "내보낼 상품이 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/data-transform/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileId: selectedProfileId || undefined,
+          customProfile: customProfile || undefined,
+          productIds: products.map((p: any) => p.id)
+        }),
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('내보내기 실패');
+      
+      // 파일 다운로드
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedTransformMarketplace}_mapped_products_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "내보내기 완료",
+        description: `${products.length}개 상품이 변환되어 다운로드되었습니다.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "내보내기 실패",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -656,6 +832,352 @@ export default function MarketSync() {
                 </ul>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Data Transform Section */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center korean-text">
+              <Upload className="mr-2 h-5 w-5" />
+              마켓플레이스 템플릿 매핑 (Universal Format)
+            </CardTitle>
+            <p className="text-muted-foreground korean-text">
+              마켓플레이스 공식 템플릿을 업로드하여 자동 매핑하고 완벽한 CSV를 생성하세요
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="upload" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="upload" className="korean-text">템플릿 업로드</TabsTrigger>
+                <TabsTrigger value="mapping" className="korean-text">매핑 편집</TabsTrigger>
+                <TabsTrigger value="preview" className="korean-text">미리보기</TabsTrigger>
+                <TabsTrigger value="export" className="korean-text">내보내기</TabsTrigger>
+              </TabsList>
+
+              {/* 템플릿 업로드 탭 */}
+              <TabsContent value="upload" className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="korean-text">마켓플레이스 선택</Label>
+                      <Select 
+                        value={selectedTransformMarketplace} 
+                        onValueChange={setSelectedTransformMarketplace}
+                        data-testid="select-transform-marketplace"
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="마켓플레이스 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cafe24">카페24</SelectItem>
+                          <SelectItem value="naver">네이버 스마트스토어</SelectItem>
+                          <SelectItem value="coupang">쿠팡</SelectItem>
+                          <SelectItem value="zigzag">지그재그</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="korean-text">공식 템플릿 업로드</Label>
+                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          accept=".csv,.xlsx,.xls"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleTemplateUpload(file);
+                          }}
+                          className="hidden"
+                          data-testid="input-template-file"
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploading}
+                          data-testid="button-upload-template"
+                        >
+                          {isUploading ? (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              업로드 중...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="mr-2 h-4 w-4" />
+                              템플릿 파일 선택
+                            </>
+                          )}
+                        </Button>
+                        <p className="text-sm text-muted-foreground korean-text mt-2">
+                          CSV, Excel 파일 지원 (최대 10MB)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="korean-text">업로드된 템플릿 정보</Label>
+                      {uploadedTemplate ? (
+                        <div className="border rounded-lg p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Badge variant="secondary" className="korean-text">
+                              {uploadedTemplate.encoding || 'UTF-8'}
+                            </Badge>
+                            <Badge variant="outline" className="korean-text">
+                              {uploadedTemplate.headers?.length || 0}개 필드
+                            </Badge>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium korean-text mb-2">감지된 필드:</p>
+                            <div className="grid grid-cols-2 gap-1 text-xs">
+                              {uploadedTemplate.headers?.slice(0, 8).map((header: string, index: number) => (
+                                <span key={index} className="bg-muted px-2 py-1 rounded">
+                                  {header}
+                                </span>
+                              ))}
+                              {uploadedTemplate.headers?.length > 8 && (
+                                <span className="text-muted-foreground korean-text">
+                                  +{uploadedTemplate.headers.length - 8}개 더
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="border rounded-lg p-4 text-center text-muted-foreground korean-text">
+                          템플릿을 업로드하면 필드 정보가 표시됩니다
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* 매핑 편집 탭 */}
+              <TabsContent value="mapping" className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="korean-text">매핑 프로필 선택</Label>
+                      <Select 
+                        value={selectedProfileId} 
+                        onValueChange={setSelectedProfileId}
+                        data-testid="select-mapping-profile"
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="프로필 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {mappingProfiles?.predefined?.map((profile: any) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.name} (기본)
+                            </SelectItem>
+                          ))}
+                          {mappingProfiles?.custom?.map((profile: any) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.name} (사용자)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {selectedProfileId && (
+                      <div className="border rounded-lg p-4">
+                        <p className="text-sm font-medium korean-text mb-2">선택된 프로필 정보:</p>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="korean-text">마켓플레이스:</span>
+                            <Badge variant="outline">
+                              {(() => {
+                                const profile = [...(mappingProfiles?.predefined || []), ...(mappingProfiles?.custom || [])]
+                                  .find((p: any) => p.id === selectedProfileId);
+                                return profile?.marketplace || '';
+                              })()}
+                            </Badge>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="korean-text">매핑 필드 수:</span>
+                            <span>
+                              {(() => {
+                                const profile = [...(mappingProfiles?.predefined || []), ...(mappingProfiles?.custom || [])]
+                                  .find((p: any) => p.id === selectedProfileId);
+                                return profile?.mappings?.length || 0;
+                              })()}개
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label className="korean-text">매핑 설정</Label>
+                      <Button variant="outline" size="sm" className="korean-text">
+                        <Edit className="mr-2 h-4 w-4" />
+                        커스텀 매핑
+                      </Button>
+                    </div>
+                    <div className="border rounded-lg p-4 text-center text-muted-foreground korean-text">
+                      고급 매핑 편집기 (개발 예정)
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* 미리보기 탭 */}
+              <TabsContent value="preview" className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-medium korean-text">변환 미리보기</h3>
+                    <p className="text-sm text-muted-foreground korean-text">
+                      선택된 매핑 프로필로 상품 데이터가 어떻게 변환되는지 확인하세요
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={handlePreview}
+                    disabled={isPreviewing || !selectedProfileId}
+                    data-testid="button-generate-preview"
+                  >
+                    {isPreviewing ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        생성 중...
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="mr-2 h-4 w-4" />
+                        미리보기 생성
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {previewData && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex space-x-4">
+                        <Badge variant="secondary" className="korean-text">
+                          성공: {previewData.successCount}개
+                        </Badge>
+                        {previewData.failureCount > 0 && (
+                          <Badge variant="destructive" className="korean-text">
+                            실패: {previewData.failureCount}개
+                          </Badge>
+                        )}
+                        {previewData.warnings?.length > 0 && (
+                          <Badge variant="outline" className="korean-text">
+                            경고: {previewData.warnings.length}개
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {previewData.data?.[0] && Object.keys(previewData.data[0]).slice(0, 6).map((key: string) => (
+                              <TableHead key={key} className="korean-text">{key}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {previewData.data?.slice(0, 5).map((row: any, index: number) => (
+                            <TableRow key={index}>
+                              {Object.keys(row).slice(0, 6).map((key: string) => (
+                                <TableCell key={key} className="max-w-32 truncate">
+                                  {String(row[key] || '')}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {previewData.errors?.length > 0 && (
+                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                        <h4 className="font-medium text-destructive korean-text mb-2">변환 오류:</h4>
+                        <ul className="text-sm space-y-1">
+                          {previewData.errors.slice(0, 3).map((error: string, index: number) => (
+                            <li key={index} className="text-destructive">• {error}</li>
+                          ))}
+                          {previewData.errors.length > 3 && (
+                            <li className="text-muted-foreground korean-text">+{previewData.errors.length - 3}개 더</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* 내보내기 탭 */}
+              <TabsContent value="export" className="space-y-6">
+                <div className="text-center space-y-4">
+                  <div>
+                    <h3 className="text-lg font-medium korean-text">CSV 내보내기</h3>
+                    <p className="text-sm text-muted-foreground korean-text">
+                      매핑된 상품 데이터를 {selectedTransformMarketplace} 형식으로 내보내기
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div className="border rounded-lg p-4">
+                      <div className="text-2xl font-bold">{products?.length || 0}</div>
+                      <div className="text-muted-foreground korean-text">전체 상품</div>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <div className="text-2xl font-bold">
+                        {selectedProfileId ? 
+                          (() => {
+                            const profile = [...(mappingProfiles?.predefined || []), ...(mappingProfiles?.custom || [])]
+                              .find((p: any) => p.id === selectedProfileId);
+                            return profile?.mappings?.length || 0;
+                          })() : 0
+                        }
+                      </div>
+                      <div className="text-muted-foreground korean-text">매핑 필드</div>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <div className="text-2xl font-bold">{previewData?.successCount || 0}</div>
+                      <div className="text-muted-foreground korean-text">변환 성공</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Button 
+                      size="lg"
+                      onClick={handleExport}
+                      disabled={isExporting || !selectedProfileId || !products?.length}
+                      className="w-full md:w-auto korean-text"
+                      data-testid="button-export-csv"
+                    >
+                      {isExporting ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          내보내기 중...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-2 h-4 w-4" />
+                          {selectedTransformMarketplace.toUpperCase()} CSV 다운로드
+                        </>
+                      )}
+                    </Button>
+                    
+                    <p className="text-xs text-muted-foreground korean-text">
+                      UTF-8 BOM 인코딩으로 한글 깨짐 방지
+                    </p>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 

@@ -5,6 +5,8 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import csv from "csv-parser";
 import { CSVParsingEngine } from "./services/csvEngine";
+import { DataTransformer, MappingProfile } from "./services/dataTransformer";
+import { MAPPING_PROFILES, getMappingProfile, getMappingProfilesByMarketplace } from "./services/mappingProfiles";
 import fs from "fs";
 import { promises as fsPromises } from "fs";
 import { storage } from "./storage";
@@ -449,6 +451,174 @@ export async function registerRoutes(app: Express): Promise<Express> {
       res.json(products);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to fetch products: " + error.message });
+    }
+  });
+
+  // ========================
+  // 데이터 변환 API
+  // ========================
+  
+  // 템플릿 업로드 및 분석
+  app.post("/api/data-transform/upload-template", requireAuth, upload.single('template'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "템플릿 파일이 필요합니다" });
+      }
+
+      const marketplace = req.body.marketplace;
+      if (!marketplace) {
+        return res.status(400).json({ message: "마켓플레이스 정보가 필요합니다" });
+      }
+
+      const csvEngine = new CSVParsingEngine();
+      const analysisResult = await csvEngine.analyzeTemplate(req.file.buffer, marketplace);
+
+      res.json(analysisResult);
+    } catch (error) {
+      console.error("Template upload error:", error);
+      res.status(500).json({ message: "템플릿 업로드 중 오류가 발생했습니다" });
+    }
+  });
+
+  // 매핑 프로필 목록 조회
+  app.get("/api/data-transform/profiles", requireAuth, async (req, res) => {
+    try {
+      const { marketplace } = req.query;
+      const userId = (req as any).user.id;
+      
+      const profiles = await storage.getAvailableMappingProfiles(marketplace as string);
+      
+      // 사전 정의된 프로필과 사용자 프로필 결합
+      const predefinedProfiles = marketplace ? 
+        getMappingProfilesByMarketplace(marketplace as string) : 
+        MAPPING_PROFILES;
+      
+      res.json({
+        predefined: predefinedProfiles,
+        custom: profiles.filter(p => p.userId === userId)
+      });
+    } catch (error) {
+      console.error("Get profiles error:", error);
+      res.status(500).json({ message: "프로필 조회 중 오류가 발생했습니다" });
+    }
+  });
+
+  // 매핑 프로필 생성/수정
+  app.post("/api/data-transform/profiles", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const profileData = req.body;
+
+      const profile = await storage.createMappingProfile(profileData, userId);
+      res.json(profile);
+    } catch (error) {
+      console.error("Create profile error:", error);
+      res.status(500).json({ message: "프로필 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  // 변환 미리보기
+  app.post("/api/data-transform/preview", requireAuth, async (req, res) => {
+    try {
+      const { profileId, sampleData, customProfile } = req.body;
+      const userId = (req as any).user.id;
+
+      let profile: MappingProfile;
+      
+      if (profileId) {
+        // 기존 프로필 사용
+        const savedProfile = await storage.getMappingProfile(profileId, userId);
+        if (!savedProfile) {
+          // 사전 정의된 프로필에서 찾기
+          profile = getMappingProfile(profileId);
+          if (!profile) {
+            return res.status(404).json({ message: "프로필을 찾을 수 없습니다" });
+          }
+        } else {
+          profile = savedProfile;
+        }
+      } else if (customProfile) {
+        // 임시 프로필 사용
+        profile = customProfile;
+      } else {
+        return res.status(400).json({ message: "프로필 정보가 필요합니다" });
+      }
+
+      // 샘플 데이터 변환
+      const result = DataTransformer.transformMultipleData(sampleData, profile);
+      
+      res.json({
+        success: result.success,
+        data: result.data.slice(0, 10), // 최대 10개 미리보기
+        errors: result.errors,
+        warnings: result.warnings,
+        successCount: result.successCount,
+        failureCount: result.failureCount
+      });
+    } catch (error) {
+      console.error("Preview error:", error);
+      res.status(500).json({ message: "미리보기 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  // 최종 CSV 내보내기
+  app.post("/api/data-transform/export", requireAuth, async (req, res) => {
+    try {
+      const { profileId, productIds, customProfile } = req.body;
+      const userId = (req as any).user.id;
+
+      let profile: MappingProfile;
+      
+      if (profileId) {
+        const savedProfile = await storage.getMappingProfile(profileId, userId);
+        if (!savedProfile) {
+          profile = getMappingProfile(profileId);
+          if (!profile) {
+            return res.status(404).json({ message: "프로필을 찾을 수 없습니다" });
+          }
+        } else {
+          profile = savedProfile;
+        }
+      } else if (customProfile) {
+        profile = customProfile;
+      } else {
+        return res.status(400).json({ message: "프로필 정보가 필요합니다" });
+      }
+
+      // 선택된 상품들 조회
+      const products = [];
+      for (const productId of productIds || []) {
+        const product = await storage.getProduct(productId);
+        if (product) products.push(product);
+      }
+
+      if (products.length === 0) {
+        return res.status(400).json({ message: "내보낼 상품이 없습니다" });
+      }
+
+      // 데이터 변환
+      const result = DataTransformer.transformMultipleData(products, profile);
+      
+      // CSV 생성
+      const csvHeader = profile.mappings.map(m => m.targetField).join(',');
+      const csvRows = result.data.map(row => 
+        profile.mappings.map(m => {
+          const value = row[m.targetField] || '';
+          // CSV 이스케이프 처리
+          return typeof value === 'string' && (value.includes(',') || value.includes('\n') || value.includes('"')) 
+            ? `"${value.replace(/"/g, '""')}"` 
+            : value;
+        }).join(',')
+      );
+      
+      const csvContent = [csvHeader, ...csvRows].join('\n');
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${profile.marketplace}_products_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send('\ufeff' + csvContent); // BOM 추가로 한글 깨짐 방지
+    } catch (error) {
+      console.error("Export error:", error);
+      res.status(500).json({ message: "CSV 내보내기 중 오류가 발생했습니다" });
     }
   });
 
