@@ -747,20 +747,11 @@ export default function ProductManagement() {
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <div className="space-y-4">
-                  <p className="text-center text-muted-foreground korean-text py-8">
-                    상품을 불러오는 중... ({products?.length || 0}개 로드됨)
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground korean-text">
+                    상품을 불러오는 중...
                   </p>
-                  {Array.from({ length: 50 }).map((_, i) => (
-                    <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg animate-pulse">
-                      <div className="w-16 h-16 bg-muted rounded-lg"></div>
-                      <div className="flex-1">
-                        <div className="h-4 bg-muted rounded w-1/3 mb-2"></div>
-                        <div className="h-3 bg-muted rounded w-1/2"></div>
-                      </div>
-                      <div className="w-32 h-8 bg-muted rounded"></div>
-                    </div>
-                  ))}
                 </div>
               ) : products && products.length > 0 ? (
                 <div className="space-y-4">
