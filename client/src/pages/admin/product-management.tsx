@@ -23,7 +23,9 @@ import {
   FileSpreadsheet,
   Check,
   Square,
-  CheckSquare
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import type { Product } from "@shared/schema";
 
@@ -37,8 +39,11 @@ export default function ProductManagement() {
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [isRegistering, setIsRegistering] = useState(false);
   const [activeJobIds, setActiveJobIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const ITEMS_PER_PAGE = 50;
 
   const { data: products, isLoading, refetch } = useQuery({
     queryKey: ['/api/products', 'management', statusFilter],
@@ -453,6 +458,30 @@ export default function ProductManagement() {
   const analyzedProducts = products?.filter((p: any) => p.status === "analyzed") || [];
   const pendingProducts = products?.filter((p: any) => p.status === "pending") || [];
 
+  // 페이지네이션 계산
+  const totalProducts = products?.length || 0;
+  const totalPages = Math.ceil(totalProducts / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const currentProducts = products?.slice(startIndex, endIndex) || [];
+
+  // 페이지 변경시 currentPage 초기화
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter]);
+
+  // totalPages 변경시 currentPage clamp 처리
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [totalPages, currentPage]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen bg-muted/20">
       <div className="flex">
@@ -735,7 +764,17 @@ export default function ProductManagement() {
                 </div>
               ) : products && products.length > 0 ? (
                 <div className="space-y-4">
-                  {products.map((product: any) => (
+                  {/* 페이지네이션 정보 */}
+                  <div className="flex items-center justify-between pb-4 border-b">
+                    <p className="text-sm text-muted-foreground korean-text">
+                      전체 {totalProducts}개 중 {startIndex + 1}-{Math.min(endIndex, totalProducts)}개 표시
+                    </p>
+                    <p className="text-sm text-muted-foreground korean-text">
+                      페이지 {currentPage}/{totalPages}
+                    </p>
+                  </div>
+                  
+                  {currentProducts.map((product: any) => (
                     <div key={product.id} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                       {/* Checkbox for selection */}
                       {product.status === "analyzed" && (
@@ -839,6 +878,50 @@ export default function ProductManagement() {
                       </div>
                     </div>
                   ))}
+                  
+                  {/* 페이지네이션 UI */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center space-x-2 pt-6 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="korean-text"
+                        data-testid="button-prev-page"
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        이전
+                      </Button>
+                      
+                      <div className="flex items-center space-x-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handlePageChange(page)}
+                            className="w-10 h-10"
+                            data-testid={`button-page-${page}`}
+                          >
+                            {page}
+                          </Button>
+                        ))}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="korean-text"
+                        data-testid="button-next-page"
+                      >
+                        다음
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-12">
