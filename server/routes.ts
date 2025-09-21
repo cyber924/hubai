@@ -5,12 +5,13 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import csv from "csv-parser";
 import fs from "fs";
-import crypto from "crypto";
+import { promises as fsPromises } from "fs";
 import { storage } from "./storage";
 import { scrapeProducts, startScheduledScraping } from "./services/scraper";
 import { generateTrendReport } from "./services/gemini";
-import { insertUserSchema, insertProductSchema } from "@shared/schema";
+import { insertUserSchema, insertProductSchema, insertMarketplaceTemplateSchema, insertFieldMappingSchema, insertExportProfileSchema } from "@shared/schema";
 import { z } from "zod";
+import * as crypto from 'crypto';
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
@@ -2047,6 +2048,569 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error: any) {
       console.error("Coupang product registration error:", error);
       res.status(500).json({ message: "쿠팡 상품 등록 실패: " + error.message });
+    }
+  });
+
+  // ============== 만능 포맷 시스템 API ==============
+  
+  // CSV 템플릿 업로드 및 분석
+  app.post("/api/templates/upload", requireAuth, upload.single("template"), async (req, res) => {
+    try {
+      // Drizzle-Zod 검증 (body 부분만)
+      const bodyValidation = insertMarketplaceTemplateSchema.pick({
+        provider: true,
+        name: true,
+        description: true
+      }).safeParse(req.body);
+
+      if (!bodyValidation.success) {
+        return res.status(400).json({ 
+          message: "요청 데이터 검증 실패", 
+          errors: bodyValidation.error.issues 
+        });
+      }
+
+      const { provider, name, description } = bodyValidation.data;
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ message: "CSV 파일이 필요합니다." });
+      }
+
+      console.log('[TEMPLATE] 업로드:', provider, name);
+      
+      // 비동기 CSV 파일 분석
+      const csvContent = await fsPromises.readFile(file.path, 'utf-8');
+      
+      // BOM 제거
+      const cleanContent = csvContent.replace(/^\uFEFF/, '');
+      const lines = cleanContent.split(/\r?\n/).filter(line => line.trim());
+      
+      if (lines.length === 0) {
+        await fsPromises.unlink(file.path);
+        return res.status(400).json({ message: "빈 CSV 파일입니다." });
+      }
+
+      // 구분자 감지 개선
+      const firstLine = lines[0];
+      let delimiter = ',';
+      if (firstLine.includes('\t') && firstLine.split('\t').length > firstLine.split(',').length) {
+        delimiter = '\t';
+      }
+
+      // CSV 파싱 개선 (따옴표 처리)
+      const parseCSVLine = (line: string, delimiter: string): string[] => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          const nextChar = line[i + 1];
+          
+          if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+              current += '"';
+              i++; // 다음 따옴표 건너뛰기
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === delimiter && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        result.push(current.trim());
+        return result;
+      };
+
+      const headers = parseCSVLine(firstLine, delimiter);
+      
+      // 필수 헤더 추정 (상품명, 가격 관련 필드)
+      const requiredHeaders = headers.filter(header => 
+        header.includes('상품명') || header.includes('이름') ||
+        header.includes('가격') || header.includes('판매가') || header.includes('공급가')
+      );
+
+      // 지문 생성 개선 (delimiter와 encoding 포함)
+      const fingerprint = crypto.createHash('md5')
+        .update(`${headers.sort().join('|')}|${delimiter}|UTF-8`)
+        .digest('hex');
+
+      // 기존 템플릿 확인
+      const existingTemplate = await storage.getMarketplaceTemplateByFingerprint(fingerprint);
+      if (existingTemplate) {
+        await fsPromises.unlink(file.path);
+        return res.json({
+          message: "이미 등록된 템플릿입니다.",
+          template: existingTemplate
+        });
+      }
+
+      // 템플릿 데이터 검증
+      const templateData = {
+        provider,
+        name,
+        description: description || null,
+        encoding: "UTF-8",
+        delimiter,
+        headers: headers,
+        requiredHeaders: requiredHeaders,
+        constraints: null,
+        fingerprint,
+        isOfficial: false,
+        maxImages: 5
+      };
+
+      const validation = insertMarketplaceTemplateSchema.safeParse(templateData);
+      if (!validation.success) {
+        await fsPromises.unlink(file.path);
+        return res.status(400).json({ 
+          message: "템플릿 데이터 검증 실패", 
+          errors: validation.error.issues 
+        });
+      }
+
+      // 새 템플릿 생성
+      const template = await storage.createMarketplaceTemplate(validation.data);
+
+      // 임시 파일 정리
+      await fsPromises.unlink(file.path);
+
+      res.json({
+        message: "템플릿이 성공적으로 업로드되었습니다.",
+        template,
+        headerCount: headers.length,
+        requiredHeaderCount: requiredHeaders.length
+      });
+
+    } catch (error: any) {
+      console.error("Template upload error:", error);
+      
+      // 임시 파일 정리
+      if (req.file?.path) {
+        try { await fsPromises.unlink(req.file.path); } catch {}
+      }
+      
+      res.status(500).json({ message: "템플릿 업로드 실패: " + error.message });
+    }
+  });
+
+  // 템플릿 목록 조회
+  app.get("/api/templates", requireAuth, async (req, res) => {
+    try {
+      const { provider } = req.query;
+      
+      let templates;
+      if (provider && typeof provider === 'string') {
+        templates = await storage.getMarketplaceTemplatesByProvider(provider);
+      } else {
+        templates = await storage.getMarketplaceTemplates();
+      }
+
+      res.json(templates);
+    } catch (error: any) {
+      console.error("Get templates error:", error);
+      res.status(500).json({ message: "템플릿 조회 실패: " + error.message });
+    }
+  });
+
+  // 특정 템플릿 조회
+  app.get("/api/templates/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const template = await storage.getMarketplaceTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "템플릿을 찾을 수 없습니다." });
+      }
+
+      // 소유권 확인
+      if (template.userId !== req.user?.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      const mappings = await storage.getFieldMappings(id);
+
+      res.json({
+        template,
+        mappings
+      });
+    } catch (error: any) {
+      console.error("Get template error:", error);
+      res.status(500).json({ message: "템플릿 조회 실패: " + error.message });
+    }
+  });
+
+  // 필드 매핑 생성/업데이트
+  app.post("/api/templates/:id/mappings", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { mappings } = req.body;
+      
+      if (!Array.isArray(mappings)) {
+        return res.status(400).json({ message: "매핑 배열이 필요합니다." });
+      }
+
+      const template = await storage.getMarketplaceTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "템플릿을 찾을 수 없습니다." });
+      }
+
+      // 소유권 확인
+      if (template.userId !== req.user?.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      // 기존 매핑 삭제
+      await storage.deleteFieldMappingsByTemplate(id);
+
+      // 새 매핑 생성
+      const createdMappings = [];
+      for (let i = 0; i < mappings.length; i++) {
+        const mapping = mappings[i];
+        
+        const validation = insertFieldMappingSchema.safeParse({
+          templateId: id,
+          headerName: mapping.headerName,
+          sourcePath: mapping.sourcePath,
+          transformId: mapping.transformId,
+          transformArgs: mapping.transformArgs,
+          defaultValue: mapping.defaultValue,
+          isRequired: mapping.isRequired,
+          displayOrder: i
+        });
+
+        if (!validation.success) {
+          return res.status(400).json({ 
+            message: `매핑 검증 실패 (${i}번째):`, 
+            errors: validation.error.issues 
+          });
+        }
+
+        const created = await storage.createFieldMapping(validation.data);
+        createdMappings.push(created);
+      }
+
+      res.json({
+        message: "매핑이 성공적으로 저장되었습니다.",
+        mappings: createdMappings
+      });
+
+    } catch (error: any) {
+      console.error("Save mappings error:", error);
+      res.status(500).json({ message: "매핑 저장 실패: " + error.message });
+    }
+  });
+
+  // 필드 매핑 조회
+  app.get("/api/templates/:id/mappings", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const template = await storage.getMarketplaceTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "템플릿을 찾을 수 없습니다." });
+      }
+
+      // 소유권 확인
+      if (template.userId !== req.user?.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      const mappings = await storage.getFieldMappings(id);
+      res.json(mappings);
+
+    } catch (error: any) {
+      console.error("Get mappings error:", error);
+      res.status(500).json({ message: "매핑 조회 실패: " + error.message });
+    }
+  });
+
+  // 필드 매핑 업데이트 (PATCH)
+  app.patch("/api/templates/:id/mappings/:mappingId", requireAuth, async (req, res) => {
+    try {
+      const { id, mappingId } = req.params;
+      
+      // 템플릿 소유권 확인
+      const template = await storage.getMarketplaceTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "템플릿을 찾을 수 없습니다." });
+      }
+      
+      if (template.userId !== req.user?.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      // 요청 데이터 검증
+      const validation = insertFieldMappingSchema.omit({ id: true, templateId: true }).safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "요청 데이터 검증 실패", 
+          errors: validation.error.issues 
+        });
+      }
+
+      const updated = await storage.updateFieldMapping(mappingId, validation.data);
+      if (!updated) {
+        return res.status(404).json({ message: "매핑을 찾을 수 없습니다." });
+      }
+
+      res.json({
+        message: "매핑이 성공적으로 업데이트되었습니다.",
+        mapping: updated
+      });
+
+    } catch (error: any) {
+      console.error("Update mapping error:", error);
+      res.status(500).json({ message: "매핑 업데이트 실패: " + error.message });
+    }
+  });
+
+  // 필드 매핑 삭제 (DELETE)
+  app.delete("/api/templates/:id/mappings/:mappingId", requireAuth, async (req, res) => {
+    try {
+      const { id, mappingId } = req.params;
+      
+      // 템플릿 소유권 확인
+      const template = await storage.getMarketplaceTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "템플릿을 찾을 수 없습니다." });
+      }
+      
+      if (template.userId !== req.user?.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      const deleted = await storage.deleteFieldMapping(mappingId);
+      if (!deleted) {
+        return res.status(404).json({ message: "매핑을 찾을 수 없습니다." });
+      }
+
+      res.json({
+        message: "매핑이 성공적으로 삭제되었습니다."
+      });
+
+    } catch (error: any) {
+      console.error("Delete mapping error:", error);
+      res.status(500).json({ message: "매핑 삭제 실패: " + error.message });
+    }
+  });
+
+  // CSV 미리보기 API
+  app.post("/api/export/preview", requireAuth, async (req, res) => {
+    try {
+      const validation = z.object({
+        templateId: z.string(),
+        productIds: z.array(z.string()).optional(),
+        limit: z.number().min(1).max(100).optional().default(10)
+      }).safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "요청 데이터 검증 실패", 
+          errors: validation.error.issues 
+        });
+      }
+
+      const { templateId, productIds, limit } = validation.data;
+
+      const template = await storage.getMarketplaceTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ message: "템플릿을 찾을 수 없습니다." });
+      }
+
+      // 소유권 확인
+      if (template.userId !== req.user?.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      const mappings = await storage.getFieldMappings(templateId);
+      
+      // 제품 데이터 가져오기
+      let products;
+      if (productIds && Array.isArray(productIds)) {
+        products = [];
+        for (const id of productIds.slice(0, limit)) {
+          const product = await storage.getProduct(id);
+          if (product) products.push(product);
+        }
+      } else {
+        products = await storage.getProducts(limit, 0);
+      }
+
+      // 데이터 변환
+      const transformedData = products.map(product => {
+        const row: any = {};
+        
+        (template.headers as string[]).forEach((header: string) => {
+          const mapping = mappings.find(m => m.headerName === header);
+          
+          if (mapping && mapping.sourcePath) {
+            // 간단한 데이터 경로 해석
+            if (mapping.sourcePath === 'product.name') {
+              row[header] = product.name;
+            } else if (mapping.sourcePath === 'product.price') {
+              row[header] = product.price;
+            } else if (mapping.sourcePath === 'product.originalPrice') {
+              row[header] = product.originalPrice || product.price;
+            } else if (mapping.sourcePath === 'product.imageUrl') {
+              row[header] = product.imageUrl || '';
+            } else if (mapping.sourcePath === 'product.category') {
+              row[header] = product.category || '';
+            } else if (mapping.sourcePath === 'product.brand') {
+              row[header] = product.brand || '';
+            } else {
+              row[header] = mapping.defaultValue || '';
+            }
+          } else {
+            row[header] = mapping?.defaultValue || '';
+          }
+        });
+        
+        return row;
+      });
+
+      res.json({
+        template: {
+          id: template.id,
+          name: template.name,
+          provider: template.provider,
+          headers: template.headers
+        },
+        data: transformedData,
+        totalProducts: products.length,
+        preview: true
+      });
+
+    } catch (error: any) {
+      console.error("Preview error:", error);
+      res.status(500).json({ message: "미리보기 생성 실패: " + error.message });
+    }
+  });
+
+  // CSV 내보내기 API
+  app.post("/api/export/csv", requireAuth, async (req, res) => {
+    try {
+      const validation = z.object({
+        templateId: z.string(),
+        productIds: z.array(z.string()).optional()
+      }).safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "요청 데이터 검증 실패", 
+          errors: validation.error.issues 
+        });
+      }
+
+      const { templateId, productIds } = validation.data;
+
+      const template = await storage.getMarketplaceTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ message: "템플릿을 찾을 수 없습니다." });
+      }
+
+      // 소유권 확인
+      if (template.userId !== req.user?.id) {
+        return res.status(403).json({ message: "권한이 없습니다." });
+      }
+
+      const mappings = await storage.getFieldMappings(templateId);
+      
+      // 제품 데이터 가져오기
+      let products;
+      if (productIds && Array.isArray(productIds)) {
+        products = [];
+        for (const id of productIds) {
+          const product = await storage.getProduct(id);
+          if (product) products.push(product);
+        }
+      } else {
+        products = await storage.getProducts(1000, 0); // 최대 1000개
+      }
+
+      if (products.length === 0) {
+        return res.status(400).json({ message: "내보낼 제품이 없습니다." });
+      }
+
+      console.log(`[CSV EXPORT] ${template.provider} 템플릿으로 ${products.length}개 제품 내보내기`);
+
+      // 데이터 변환
+      const csvData = products.map(product => {
+        const row: any = {};
+        
+        (template.headers as string[]).forEach((header: string) => {
+          const mapping = mappings.find(m => m.headerName === header);
+          
+          if (mapping && mapping.sourcePath) {
+            // 데이터 변환 로직
+            if (mapping.sourcePath === 'product.name') {
+              row[header] = product.name;
+            } else if (mapping.sourcePath === 'product.price') {
+              row[header] = product.price;
+            } else if (mapping.sourcePath === 'product.originalPrice') {
+              row[header] = product.originalPrice || product.price;
+            } else if (mapping.sourcePath === 'product.imageUrl') {
+              row[header] = product.imageUrl || '';
+            } else if (mapping.sourcePath === 'product.category') {
+              row[header] = product.category || '';
+            } else if (mapping.sourcePath === 'product.brand') {
+              row[header] = product.brand || '';
+            } else if (mapping.sourcePath === 'product.description') {
+              row[header] = product.description || '';
+            } else {
+              row[header] = mapping.defaultValue || '';
+            }
+
+            // 간단한 변환 적용
+            if (mapping.transformId === 'truncate' && mapping.transformArgs && (mapping.transformArgs as any).length) {
+              const maxLength = (mapping.transformArgs as any).length;
+              if (typeof row[header] === 'string' && row[header].length > maxLength) {
+                row[header] = row[header].substring(0, maxLength);
+              }
+            }
+          } else {
+            row[header] = mapping?.defaultValue || '';
+          }
+        });
+        
+        return row;
+      });
+
+      // CSV 생성
+      const headers = template.headers as string[];
+      const delimiter = template.delimiter || ',';
+      
+      // CSV 헤더
+      let csv = headers.map(h => `"${h}"`).join(delimiter) + '\n';
+      
+      // CSV 데이터
+      csvData.forEach(row => {
+        const values = headers.map(header => {
+          const value = row[header] || '';
+          // CSV injection 방지
+          const sanitized = String(value).replace(/"/g, '""');
+          return `"${sanitized}"`;
+        });
+        csv += values.join(delimiter) + '\n';
+      });
+
+      // 파일명 생성
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `${template.provider}_products_${timestamp}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', Buffer.byteLength(csv, 'utf8'));
+      
+      res.send(csv);
+
+    } catch (error: any) {
+      console.error("CSV export error:", error);
+      res.status(500).json({ message: "CSV 내보내기 실패: " + error.message });
     }
   });
 
