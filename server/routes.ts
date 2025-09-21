@@ -396,6 +396,42 @@ export async function registerRoutes(app: Express): Promise<Express> {
   
   console.log('[ROUTES] Health check route registered');
 
+  // 임시 카페24 연결 생성 (테스트용)
+  app.post("/api/test/cafe24-connection", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      
+      // 기존 연결 확인
+      const existingConnection = await storage.getMarketplaceConnectionByProvider(userId, "cafe24");
+      if (existingConnection) {
+        return res.json({ message: "이미 연결됨", connection: existingConnection });
+      }
+
+      // 테스트 연결 생성
+      const connectionData = {
+        userId: userId,
+        provider: "cafe24",
+        authType: "oauth",
+        shopId: "glovv",
+        shopDomain: "glovv.cafe24.com",
+        accessToken: "test_token",
+        refreshToken: null,
+        expiresAt: null,
+        status: "active" as const,
+        lastSynced: null,
+        errorMessage: null
+      };
+
+      const connection = await storage.createMarketplaceConnection(connectionData);
+      console.log('[TEST] 카페24 테스트 연결 생성:', connection.id);
+      
+      res.json({ message: "테스트 연결 생성 완료", connection });
+    } catch (error: any) {
+      console.error('[TEST] 연결 생성 실패:', error);
+      res.status(500).json({ message: "연결 생성 실패", error: error.message });
+    }
+  });
+
   // Cafe24 app installation endpoint (unauthenticated)
   app.get("/api/marketplace/cafe24/install", async (req, res) => {
     console.log('[ROUTES] Cafe24 install endpoint called with query:', req.query);
