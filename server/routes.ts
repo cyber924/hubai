@@ -439,7 +439,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       if (source) {
         products = await storage.getProductsBySource(source);
       } else if (status) {
-        products = await storage.getProductsByStatus(status);
+        products = await storage.getProductsByStatus(status, limit, offset);
       } else {
         products = await storage.getProducts(limit, offset);
       }

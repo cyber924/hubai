@@ -47,7 +47,7 @@ export interface IStorage {
   getProducts(limit?: number, offset?: number): Promise<Product[]>;
   getProduct(id: string): Promise<Product | undefined>;
   getProductsBySource(source: string): Promise<Product[]>;
-  getProductsByStatus(status: string): Promise<Product[]>;
+  getProductsByStatus(status: string, limit?: number, offset?: number): Promise<Product[]>;
   createProduct(product: InsertProduct): Promise<Product>;
   updateProduct(id: string, updates: Partial<Product>): Promise<Product>;
   updateProductAiAnalysis(id: string, analysis: any): Promise<Product>;
@@ -220,8 +220,11 @@ export class MemStorage implements IStorage {
     return Array.from(this.products.values()).filter(product => product.source === source);
   }
 
-  async getProductsByStatus(status: string): Promise<Product[]> {
-    return Array.from(this.products.values()).filter(product => product.status === status);
+  async getProductsByStatus(status: string, limit?: number, offset?: number): Promise<Product[]> {
+    const filtered = Array.from(this.products.values()).filter(product => product.status === status);
+    const start = offset || 0;
+    const end = limit ? start + limit : filtered.length;
+    return filtered.slice(start, end);
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
@@ -685,8 +688,11 @@ export class DatabaseStorage implements IStorage {
     return await this.db.select().from(products).where(eq(products.source, source));
   }
 
-  async getProductsByStatus(status: string): Promise<Product[]> {
-    return await this.db.select().from(products).where(eq(products.status, status));
+  async getProductsByStatus(status: string, limit?: number, offset?: number): Promise<Product[]> {
+    const query = this.db.select().from(products).where(eq(products.status, status));
+    if (limit) query.limit(limit);
+    if (offset) query.offset(offset);
+    return await query;
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
