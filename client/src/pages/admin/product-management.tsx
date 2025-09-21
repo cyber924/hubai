@@ -43,7 +43,7 @@ export default function ProductManagement() {
   const { data: products, isLoading, refetch } = useQuery({
     queryKey: ['/api/products', 'management', statusFilter],
     queryFn: () => {
-      const params: any = { limit: 100 };
+      const params: any = { limit: 1000 }; // 모든 상품 보기
       if (statusFilter !== 'all') params.status = statusFilter;
       return api.getProducts(params);
     },
