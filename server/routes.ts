@@ -605,19 +605,20 @@ export async function registerRoutes(app: Express): Promise<Express> {
         case "cafe24":
           filename = "cafe24_products.csv";
           headers = [
-            "상품코드", "상품명", "상품요약설명", "상품상세설명", "판매가", "정가", 
-            "재고수량", "대표이미지", "추가이미지1", "추가이미지2", "추가이미지3",
+            "상품코드", "상품명", "공급가", "판매가", "소비자가", "재고수량", 
+            "상품요약설명", "상품상세설명", "대표이미지", "추가이미지1", "추가이미지2", "추가이미지3",
             "카테고리", "브랜드", "제조사", "원산지", "배송비", "무게",
             "상품옵션", "키워드", "진열상태", "판매상태", "상품상태코드"
           ];
           csvData = products.map((product, index) => ({
             "상품코드": `SH${(index + 1).toString().padStart(6, '0')}`, // SH000001 형식
             "상품명": product.name,
+            "공급가": product.price, // 공급가와 판매가를 동일하게 설정
+            "판매가": product.price,
+            "소비자가": product.originalPrice || product.price,
+            "재고수량": "999", // 기본 재고
             "상품요약설명": product.description ? product.description.substring(0, 100) : "",
             "상품상세설명": product.description || "",
-            "판매가": product.price,
-            "정가": product.originalPrice || product.price,
-            "재고수량": "999", // 기본 재고
             "대표이미지": product.imageUrl || "",
             "추가이미지1": product.imageUrls && product.imageUrls[0] ? product.imageUrls[0] : "",
             "추가이미지2": product.imageUrls && product.imageUrls[1] ? product.imageUrls[1] : "",
