@@ -547,6 +547,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // 샘플 데이터 변환
       const result = DataTransformer.transformMultipleData(sampleData, profile);
       
+      console.log("Preview transform result:", {
+        success: result.success,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        errors: result.errors,
+        warnings: result.warnings
+      });
+      
       res.json({
         success: result.success,
         data: result.data.slice(0, 10), // 최대 10개 미리보기
