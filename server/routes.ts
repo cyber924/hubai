@@ -1777,9 +1777,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.log('[CAFE24 CALLBACK] New connection created for user:', stateData.userId);
       }
 
-      // Redirect back to frontend with success message
-      console.log('[CAFE24 CALLBACK] Redirecting to /market-sync?cafe24_connected=true');
-      res.redirect('/market-sync?cafe24_connected=true');
+      // Redirect back to products page with success message
+      console.log('[CAFE24 CALLBACK] Redirecting to /products?cafe24_connected=true');
+      res.redirect('/products?cafe24_connected=true');
     } catch (error: any) {
       console.error("Cafe24 OAuth callback error:", error);
       // Clean up session state on error

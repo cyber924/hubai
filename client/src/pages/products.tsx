@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,13 +18,26 @@ export default function Products() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  // 카페24 연결 성공 메시지 처리
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('cafe24_connected') === 'true') {
+      toast({
+        title: "카페24 연결 완료",
+        description: "카페24가 성공적으로 연결되었습니다. 이제 상품을 등록할 수 있습니다.",
+      });
+      // URL에서 파라미터 제거
+      window.history.replaceState({}, '', '/products');
+    }
+  }, [toast]);
+
   // Fetch products
   const { data: products = [], isLoading, error } = useQuery<Product[]>({
     queryKey: ["/api/products"],
   });
 
   // Fetch marketplace connections
-  const { data: connections = [] } = useQuery<Array<{platform: string}>>({
+  const { data: connections = [] } = useQuery<Array<{provider: string}>>({
     queryKey: ["/api/marketplace/connections"],
   });
 
@@ -258,7 +271,7 @@ export default function Products() {
               >
                 선택 해제
               </Button>
-              {connections.some(c => c.platform === "cafe24") && (
+              {connections.some(c => c.provider === "cafe24") && (
                 <Button 
                   size="sm" 
                   className="bg-orange-600 hover:bg-orange-700"

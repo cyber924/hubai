@@ -421,14 +421,20 @@ export default function MarketSync() {
                         <>
                           <div className="mb-4">
                             <div className="flex items-center justify-center mb-2">
-                              {cafe24Status.connected ? (
+                              {cafe24AuthMutation.isPending ? (
+                                <RefreshCw className="h-6 w-6 text-orange-500 animate-spin" />
+                              ) : cafe24Status.connected ? (
                                 <Wifi className="h-6 w-6 text-green-500" />
                               ) : (
                                 <WifiOff className="h-6 w-6 text-red-500" />
                               )}
                             </div>
                             <div className="text-sm text-center korean-text">
-                              {cafe24Status.connected ? (
+                              {cafe24AuthMutation.isPending ? (
+                                <Badge variant="outline" className="korean-text text-orange-600">
+                                  연동중...
+                                </Badge>
+                              ) : cafe24Status.connected ? (
                                 <Badge variant="secondary" className="korean-text">
                                   연결됨
                                 </Badge>
