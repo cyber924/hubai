@@ -166,15 +166,24 @@ export default function MarketSync() {
   // 카페24 OAuth 인증 뮤테이션
   const cafe24AuthMutation = useMutation({
     mutationFn: async () => {
+      console.log('[DEBUG] API 요청 시작');
       const response = await apiRequest('POST', '/api/marketplace/cafe24/auth');
-      return response.json();
+      console.log('[DEBUG] API 응답 받음');
+      const data = await response.json();
+      console.log('[DEBUG] 응답 데이터:', data);
+      return data;
     },
     onSuccess: (data: any) => {
+      console.log('[DEBUG] onSuccess 실행, data:', data);
       if (data.authUrl) {
+        console.log('[DEBUG] authUrl 존재, 이동:', data.authUrl);
         window.location.href = data.authUrl;
+      } else {
+        console.log('[DEBUG] authUrl이 없음');
       }
     },
     onError: (error: any) => {
+      console.log('[DEBUG] onError 실행, error:', error);
       toast({
         title: "연결 실패",
         description: error.message || "카페24 연결 중 오류가 발생했습니다.",
@@ -277,6 +286,8 @@ export default function MarketSync() {
 
   // 카페24 연결 처리
   const handleCafe24Connect = () => {
+    console.log('[DEBUG] 카페24 연결 버튼 클릭됨');
+    console.log('[DEBUG] mutation 시작');
     cafe24AuthMutation.mutate();
   };
 
