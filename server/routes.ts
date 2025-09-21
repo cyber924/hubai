@@ -267,19 +267,7 @@ const upload = multer({
 
 export async function registerRoutes(app: Express): Promise<Express> {
   
-  // Health check endpoint to verify route registration
-  app.get("/api/health", (req, res) => {
-    res.json({ 
-      status: "ok", 
-      timestamp: new Date().toISOString(),
-      message: "StyleHub API is running"
-    });
-  });
-
-  // Cafe24 app installation endpoint (unauthenticated)
-  app.get("/api/marketplace/cafe24/install", async (req, res) => {
-    try {
-      const { mall_id, user_id, user_name, hmac, timestamp, lang, nation, shop_no, user_type } = req.query;
+  console.log('[ROUTES] Registering API routes...');
       
       console.log('[CAFE24 APP] 앱 설치/인증 요청 수신:', {
         mall_id,
@@ -432,6 +420,50 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // Product routes
+  // Health check endpoint to verify route registration
+  app.get("/api/health", (req, res) => {
+    console.log('[ROUTES] Health check endpoint called');
+    res.json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      message: "StyleHub API is running"
+    });
+  });
+  
+  console.log('[ROUTES] Health check route registered');
+
+  // Cafe24 app installation endpoint (unauthenticated)
+  app.get("/api/marketplace/cafe24/install", async (req, res) => {
+    console.log('[ROUTES] Cafe24 install endpoint called with query:', req.query);
+    try {
+      const { mall_id, user_id, user_name, hmac, timestamp, lang, nation, shop_no, user_type } = req.query;
+      
+      console.log('[CAFE24 APP] 앱 설치/인증 요청 수신:', {
+        mall_id,
+        user_id,
+        user_name,
+        hmac,
+        timestamp,
+        lang,
+        nation,
+        shop_no,
+        user_type
+      });
+
+      // 응답 반환
+      res.json({
+        message: "카페24 앱 설치 확인됨",
+        mall_id,
+        user_id,
+        status: "success"
+      });
+      
+    } catch (error: any) {
+      console.error('[CAFE24 APP] 설치 처리 오류:', error);
+      res.status(500).json({ message: "설치 처리 중 오류가 발생했습니다: " + error.message });
+    }
+  });
+
   app.get("/api/products", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
