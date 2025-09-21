@@ -470,8 +470,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(400).json({ message: "마켓플레이스 정보가 필요합니다" });
       }
 
-      const csvEngine = new CSVParsingEngine();
-      const analysisResult = await csvEngine.analyzeTemplate(req.file.buffer, marketplace);
+      const analysisResult = CSVParsingEngine.analyzeCSVFromBuffer(req.file.buffer);
 
       res.json(analysisResult);
     } catch (error) {
