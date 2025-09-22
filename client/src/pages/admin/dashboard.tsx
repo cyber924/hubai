@@ -35,44 +35,30 @@ export default function AdminDashboard() {
     queryFn: () => api.getProducts({ limit: 10 }),
   });
 
-  const { data: scrapingJobs, isLoading: jobsLoading } = useQuery({
-    queryKey: ['/api/scraping/jobs'],
-    queryFn: () => api.getScrapingJobs(5),
-    refetchInterval: 10000, // Refresh every 10 seconds
+  const { data: recentUploads, isLoading: uploadsLoading } = useQuery({
+    queryKey: ['/api/products', 'csv_uploads'],
+    queryFn: () => api.getProducts({ limit: 5, source: 'csv_upload' }),
   });
 
-  const handleStartScraping = async () => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('csvFile', file);
+
     try {
-      await api.startScraping();
-      // Invalidate queries to refresh data
+      const response = await fetch('/api/admin/upload-csv', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (response.ok) {
+        // Refresh product data
+        window.location.reload();
+      }
     } catch (error) {
-      console.error('Failed to start scraping:', error);
-    }
-  };
-
-  const getJobStatusIcon = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "running":
-        return <RefreshCw className="h-4 w-4 text-blue-500 animate-spin" />;
-      case "failed":
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <Package className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getJobStatusBadge = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <Badge variant="secondary" className="korean-text">완료</Badge>;
-      case "running":
-        return <Badge variant="outline" className="korean-text">실행중</Badge>;
-      case "failed":
-        return <Badge variant="destructive" className="korean-text">실패</Badge>;
-      default:
-        return <Badge variant="outline" className="korean-text">{status}</Badge>;
+      console.error('CSV 업로드 실패:', error);
     }
   };
 
@@ -86,7 +72,7 @@ export default function AdminDashboard() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold korean-text" data-testid="text-dashboard-title">관리자 대시보드</h1>
             <p className="text-muted-foreground korean-text">
-              실시간 수집 현황과 AI 분석 결과를 확인하세요
+              상품 업로드와 AI 분석 결과를 확인하세요
             </p>
           </div>
 
@@ -200,62 +186,79 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Scraping Jobs */}
+            {/* CSV Upload */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="korean-text">수집 작업 현황</CardTitle>
+                  <CardTitle className="korean-text">상품 업로드</CardTitle>
                   <Button 
-                    size="sm" 
-                    onClick={handleStartScraping}
+                    size="sm"
+                    onClick={() => document.getElementById('csv-upload')?.click()}
                     className="korean-text"
-                    data-testid="button-start-scraping"
+                    data-testid="button-upload-csv"
                   >
-                    <Play className="mr-2 h-4 w-4" />
-                    수집 시작
+                    <Download className="mr-2 h-4 w-4" />
+                    CSV 업로드
                   </Button>
+                  <input
+                    id="csv-upload"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
                 </div>
               </CardHeader>
               <CardContent>
-                {jobsLoading ? (
-                  <div className="space-y-4">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="flex items-center space-x-4 p-3 border rounded-lg animate-pulse">
-                        <div className="w-8 h-8 bg-muted rounded"></div>
-                        <div className="flex-1">
-                          <div className="h-4 bg-muted rounded w-1/2 mb-2"></div>
-                          <div className="h-3 bg-muted rounded w-1/3"></div>
-                        </div>
-                      </div>
-                    ))}
+                <div className="space-y-4">
+                  <div className="p-4 border-2 border-dashed border-muted-foreground/25 rounded-lg text-center">
+                    <Download className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground korean-text mb-2">
+                      CSV 파일을 업로드하여 상품을 일괄 등록하세요
+                    </p>
+                    <p className="text-xs text-muted-foreground korean-text">
+                      필수 필드: name, price, description, category, brand
+                    </p>
                   </div>
-                ) : scrapingJobs && scrapingJobs.length > 0 ? (
-                  <div className="space-y-4">
-                    {scrapingJobs.map((job) => (
-                      <div key={job.id} className="flex items-center space-x-4 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center space-x-2">
-                          {getJobStatusIcon(job.status)}
+                  
+                  {uploadsLoading ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="flex items-center space-x-3 p-3 border rounded-lg animate-pulse">
+                          <div className="w-6 h-6 bg-muted rounded"></div>
+                          <div className="flex-1">
+                            <div className="h-3 bg-muted rounded w-2/3 mb-1"></div>
+                            <div className="h-2 bg-muted rounded w-1/3"></div>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <p className="font-medium korean-text" data-testid={`text-job-source-${job.id}`}>
-                            {job.source} 수집
-                          </p>
-                          <p className="text-sm text-muted-foreground korean-text">
-                            {job.productsProcessed}/{job.productsFound} 처리됨
-                          </p>
+                      ))}
+                    </div>
+                  ) : recentUploads && recentUploads.length > 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium korean-text">최근 업로드된 상품</p>
+                      {recentUploads.map((product: any) => (
+                        <div key={product.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate korean-text">
+                              {product.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground korean-text">
+                              ₩{Number(product.price).toLocaleString()} • {product.category}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          {getJobStatusBadge(job.status)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Package className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground korean-text">수집 작업이 없습니다</p>
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <Package className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
+                      <p className="text-xs text-muted-foreground korean-text">
+                        아직 업로드된 상품이 없습니다
+                      </p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
 

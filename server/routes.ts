@@ -10,7 +10,6 @@ import { MAPPING_PROFILES, getMappingProfile, getMappingProfilesByMarketplace } 
 import fs from "fs";
 import { promises as fsPromises } from "fs";
 import { storage } from "./storage";
-import { scrapeProducts, startScheduledScraping } from "./services/scraper";
 import { generateTrendReport } from "./services/gemini";
 import { insertUserSchema, insertProductSchema, insertMarketplaceTemplateSchema, insertFieldMappingSchema, insertExportProfileSchema } from "@shared/schema";
 import { z } from "zod";
@@ -1236,32 +1235,75 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
-  // Scraping routes
-  app.post("/api/scraping/start", requireAuth, requireAdmin, async (req, res) => {
+  // CSV Upload routes
+  app.post("/api/admin/upload-csv", requireAuth, requireAdmin, upload.single('csvFile'), async (req, res) => {
     try {
-      const { source } = req.body;
-      
-      if (source && ["naver", "coupang", "zigzag"].includes(source)) {
-        // Start scraping for specific source
-        scrapeProducts(source as "naver" | "coupang" | "zigzag");
-        res.json({ message: `Started scraping ${source}` });
-      } else {
-        // Start scraping for all sources
-        startScheduledScraping();
-        res.json({ message: "Started scraping all sources" });
+      if (!req.file) {
+        return res.status(400).json({ message: "CSV 파일이 필요합니다" });
       }
-    } catch (error: any) {
-      res.status(500).json({ message: "Failed to start scraping: " + error.message });
-    }
-  });
 
-  app.get("/api/scraping/jobs", async (req, res) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 10;
-      const jobs = await storage.getScrapingJobs(limit);
-      res.json(jobs);
+      const csvData = req.file.buffer.toString('utf-8');
+      const lines = csvData.split('\n').filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        return res.status(400).json({ message: "올바른 CSV 형식이 아닙니다" });
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      const products = [];
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+
+      // CSV 데이터 파싱 및 DB 저장
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+          const productData: any = {};
+          
+          headers.forEach((header, index) => {
+            productData[header] = values[index] || '';
+          });
+
+          // 필수 필드 검증
+          if (!productData.name || !productData.price) {
+            errors.push(`행 ${i + 1}: 상품명과 가격은 필수입니다`);
+            errorCount++;
+            continue;
+          }
+
+          // 상품 생성
+          const product = await storage.createProduct({
+            name: productData.name,
+            description: productData.description || '',
+            price: productData.price,
+            originalPrice: productData.originalPrice || productData.price,
+            imageUrl: productData.imageUrl || '',
+            category: productData.category || '기타',
+            brand: productData.brand || '',
+            source: productData.source || 'csv_upload',
+            sourceUrl: productData.sourceUrl || '',
+            sourceProductId: productData.sourceProductId || '',
+            status: 'pending'
+          });
+          
+          products.push(product);
+          successCount++;
+        } catch (error: any) {
+          errors.push(`행 ${i + 1}: ${error.message}`);
+          errorCount++;
+        }
+      }
+
+      res.json({
+        message: "CSV 업로드 완료",
+        successCount,
+        errorCount,
+        errors: errors.slice(0, 10), // 최대 10개 오류만 반환
+        products: products.slice(0, 5) // 최대 5개 상품 예시만 반환
+      });
     } catch (error: any) {
-      res.status(500).json({ message: "Failed to fetch scraping jobs: " + error.message });
+      res.status(500).json({ message: "CSV 업로드 실패: " + error.message });
     }
   });
 

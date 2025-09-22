@@ -14,16 +14,12 @@ export interface TrendReport {
   recommendations: string[];
 }
 
-export interface ScrapingJob {
-  id: string;
-  source: string;
-  status: string;
-  productsFound: number;
-  productsProcessed: number;
-  startedAt?: Date;
-  completedAt?: Date;
-  errorMessage?: string;
-  createdAt: Date;
+export interface CSVUploadResult {
+  message: string;
+  successCount: number;
+  errorCount: number;
+  errors: string[];
+  products: any[];
 }
 
 export interface RegistrationJob {
@@ -85,15 +81,15 @@ export const api = {
     return response.json();
   },
 
-  // Scraping operations
-  async startScraping(source?: string) {
-    return apiRequest('POST', '/api/scraping/start', { source });
-  },
-
-  async getScrapingJobs(limit?: number): Promise<ScrapingJob[]> {
-    const url = `/api/scraping/jobs${limit ? `?limit=${limit}` : ''}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch scraping jobs');
+  // CSV Upload operations  
+  async uploadCSV(file: File): Promise<CSVUploadResult> {
+    const formData = new FormData();
+    formData.append('csvFile', file);
+    const response = await fetch('/api/admin/upload-csv', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) throw new Error('Failed to upload CSV');
     return response.json();
   },
 
