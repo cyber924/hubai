@@ -943,6 +943,18 @@ export class DatabaseStorage implements IStorage {
     return await this.db.select().from(products).orderBy(desc(products.createdAt)).limit(limit).offset(offset);
   }
 
+  async getProductsWithCount(limit = 50, offset = 0): Promise<{ products: Product[], total: number }> {
+    const totalResult = await this.db.select({ count: sql<number>`count(*)` }).from(products);
+    const total = totalResult[0].count;
+    
+    const productsResult = await this.db.select().from(products)
+      .orderBy(desc(products.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return { products: productsResult, total };
+  }
+
   async getProduct(id: string): Promise<Product | undefined> {
     const result = await this.db.select().from(products).where(eq(products.id, id));
     return result[0];
@@ -957,6 +969,21 @@ export class DatabaseStorage implements IStorage {
     if (limit) query.limit(limit);
     if (offset) query.offset(offset);
     return await query;
+  }
+
+  async getProductsByStatusWithCount(status: string, limit = 50, offset = 0): Promise<{ products: Product[], total: number }> {
+    const totalResult = await this.db.select({ count: sql<number>`count(*)` })
+      .from(products)
+      .where(eq(products.status, status));
+    const total = totalResult[0].count;
+    
+    const productsResult = await this.db.select().from(products)
+      .where(eq(products.status, status))
+      .orderBy(desc(products.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return { products: productsResult, total };
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {

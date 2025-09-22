@@ -20,6 +20,8 @@ export default function Products() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showMarketplaceSelect, setShowMarketplaceSelect] = useState(false);
   const [selectedMarketplace, setSelectedMarketplace] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
 
   // 카페24 연결 성공 메시지 처리
   useEffect(() => {
@@ -34,14 +36,31 @@ export default function Products() {
     }
   }, [toast]);
 
-  // Fetch products
-  const { data: products = [], isLoading, error } = useQuery<Product[]>({
-    queryKey: ["/api/products"],
+  // Fetch products with count
+  const { data, isLoading, error } = useQuery<{ products: Product[], total: number }>({
+    queryKey: ["/api/products", statusFilter, currentPage],
     queryFn: () => {
-      const params = new URLSearchParams({ limit: '1000' });
+      const params = new URLSearchParams({ 
+        limit: ITEMS_PER_PAGE.toString(),
+        offset: ((currentPage - 1) * ITEMS_PER_PAGE).toString(),
+        withCount: 'true'
+      });
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
       return fetch(`/api/products?${params}`).then(res => res.json());
     },
   });
+
+  const products = data?.products || [];
+  const totalCount = data?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+
+  // 필터 변경 시 페이지 리셋 및 선택 초기화
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedProducts([]);
+  }, [statusFilter]);
 
   // Fetch marketplace connections
   const { data: connections = [] } = useQuery<Array<{provider: string}>>({
@@ -55,7 +74,10 @@ export default function Products() {
       return response.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/products"],
+        exact: false 
+      });
       queryClient.invalidateQueries({ queryKey: ['/api/marketplace-syncs'] });
       const marketplaceName = selectedMarketplace === 'cafe24' ? '카페24' : 
                              selectedMarketplace === 'naver' ? '네이버' : 
@@ -97,31 +119,22 @@ export default function Products() {
     });
   };
 
-  // Filter products based on search and status
+  // Filter products based on search only (status filtering is done server-side)
   const filteredProducts = products.filter(product => {
     const matchesSearch = !searchQuery || 
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.description?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = statusFilter === "all" || product.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
+    return matchesSearch;
   });
 
-  // Group products by status
-  const productsByStatus = {
-    collected: filteredProducts.filter(p => p.status === "collected"),
-    analyzed: filteredProducts.filter(p => p.status === "analyzed"),
-    registered: filteredProducts.filter(p => p.status === "registered"),
-    synced: filteredProducts.filter(p => p.status === "synced"),
-  };
-
+  // Status counts - showing only current filter count
   const statusCounts = {
-    all: filteredProducts.length,
-    collected: productsByStatus.collected.length,
-    analyzed: productsByStatus.analyzed.length,
-    registered: productsByStatus.registered.length,
-    synced: productsByStatus.synced.length,
+    all: totalCount,
+    collected: statusFilter === 'collected' ? totalCount : '?',
+    analyzed: statusFilter === 'analyzed' ? totalCount : '?',
+    registered: statusFilter === 'registered' ? totalCount : '?',
+    synced: statusFilter === 'synced' ? totalCount : '?',
   };
 
   // Select/deselect products
@@ -256,9 +269,9 @@ export default function Products() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">상품 관리</h1>
+          <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">내 상품</h1>
           <p className="text-muted-foreground" data-testid="text-page-description">
-            수집된 상품들을 확인하고 마켓플레이스에 등록하세요
+            {totalCount > 0 ? `총 ${totalCount}개 상품 (페이지 ${currentPage}/${totalPages})` : '상품이 없습니다'}
           </p>
         </div>
         <div className="mt-4 lg:mt-0 flex flex-col sm:flex-row gap-4">
@@ -343,7 +356,7 @@ export default function Products() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
                   <Checkbox
-                    checked={filteredProducts.length > 0 && selectedProducts.length === filteredProducts.length}
+                    checked={filteredProducts.length > 0 && filteredProducts.every(p => selectedProducts.includes(p.id))}
                     onCheckedChange={(checked) => handleSelectAll(filteredProducts, checked as boolean)}
                     data-testid="checkbox-select-all"
                   />
@@ -365,22 +378,22 @@ export default function Products() {
           )}
         </TabsContent>
 
-        {Object.entries(productsByStatus).map(([status, products]) => (
+        {['collected', 'analyzed', 'registered', 'synced'].map((status) => (
           <TabsContent key={status} value={status} className="mt-6">
-            {products.length > 0 ? (
+            {filteredProducts.length > 0 ? (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-2">
                     <Checkbox
-                      checked={products.length > 0 && products.every(p => selectedProducts.includes(p.id))}
-                      onCheckedChange={(checked) => handleSelectAll(products, checked as boolean)}
+                      checked={filteredProducts.length > 0 && filteredProducts.every(p => selectedProducts.includes(p.id))}
+                      onCheckedChange={(checked) => handleSelectAll(filteredProducts, checked as boolean)}
                       data-testid={`checkbox-select-all-${status}`}
                     />
                     <span className="text-sm font-medium">{getStatusText(status)} 상품 전체 선택</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {products.map(product => (
+                  {filteredProducts.map(product => (
                     <ProductCard key={product.id} product={product} />
                   ))}
                 </div>
@@ -395,6 +408,66 @@ export default function Products() {
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Pagination */}
+      {totalCount > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-center space-x-2 mt-8">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            data-testid="button-first-page"
+          >
+            처음
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            data-testid="button-prev-page"
+          >
+            이전
+          </Button>
+          
+          <div className="flex items-center space-x-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+              return page <= totalPages ? (
+                <Button
+                  key={page}
+                  variant={currentPage === page ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setCurrentPage(page)}
+                  data-testid={`button-page-${page}`}
+                >
+                  {page}
+                </Button>
+              ) : null;
+            })}
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            data-testid="button-next-page"
+          >
+            다음
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages}
+            data-testid="button-last-page"
+          >
+            마지막
+          </Button>
+        </div>
+      )}
 
       {/* 마켓플레이스 선택 모달 */}
       <Dialog open={showMarketplaceSelect} onOpenChange={setShowMarketplaceSelect}>

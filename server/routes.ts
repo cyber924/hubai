@@ -556,9 +556,6 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(400).json({ message: "프로필 정보가 필요합니다" });
       }
 
-      // 디버깅: 실제 상품 데이터 구조 확인
-      console.log("Sample product data structure:", JSON.stringify(sampleData[0], null, 2));
-      
       // 샘플 데이터 변환
       const result = DataTransformer.transformMultipleData(sampleData, profile);
       
