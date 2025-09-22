@@ -1249,7 +1249,42 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(400).json({ message: "올바른 CSV 형식이 아닙니다" });
       }
 
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      // 더 견고한 CSV 파싱 함수
+      function parseCSVLine(line: string): string[] {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        let i = 0;
+        
+        while (i < line.length) {
+          const char = line[i];
+          
+          if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              // 이스케이프된 따옴표 ("") -> (")
+              current += '"';
+              i += 2;
+            } else {
+              // 따옴표 시작 또는 끝
+              inQuotes = !inQuotes;
+              i++;
+            }
+          } else if (char === ',' && !inQuotes) {
+            // 필드 구분자
+            result.push(current.trim());
+            current = '';
+            i++;
+          } else {
+            current += char;
+            i++;
+          }
+        }
+        
+        result.push(current.trim());
+        return result;
+      }
+
+      const headers = parseCSVLine(lines[0]);
       const products = [];
       let successCount = 0;
       let errorCount = 0;
@@ -1258,7 +1293,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // CSV 데이터 파싱 및 DB 저장
       for (let i = 1; i < lines.length; i++) {
         try {
-          const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+          const values = parseCSVLine(lines[i]);
           const productData: any = {};
           
           headers.forEach((header, index) => {
@@ -1283,8 +1318,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
             brand: productData.brand || '',
             source: productData.source || 'csv_upload',
             sourceUrl: productData.sourceUrl || '',
-            sourceProductId: productData.sourceProductId || '',
-            status: 'pending'
+            sourceProductId: productData.sourceProductId || ''
           });
           
           products.push(product);
