@@ -1390,9 +1390,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="stylehub-sample-products.csv"');
       
-      // UTF-8 BOM 추가 (엑셀에서 한글 정상 표시를 위해)
-      res.write('\uFEFF');
-      res.send(csvContent);
+      // UTF-8 BOM + CSV 내용을 함께 전송
+      const csvWithBOM = '\uFEFF' + csvContent;
+      res.send(csvWithBOM);
     } catch (error: any) {
       res.status(500).json({ message: "샘플 CSV 생성 실패: " + error.message });
     }
