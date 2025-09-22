@@ -1323,6 +1323,25 @@ export async function registerRoutes(app: Express): Promise<Express> {
           
           products.push(product);
           successCount++;
+
+          // AI 분석 시작 (백그라운드에서 실행)
+          setImmediate(async () => {
+            try {
+              const { analyzeProduct } = await import('./services/gemini');
+              const analysis = await analyzeProduct({
+                name: product.name,
+                description: product.description,
+                price: product.price,
+                imageUrl: product.imageUrl,
+                source: product.source
+              });
+              
+              await storage.updateProductAiAnalysis(product.id, analysis);
+              console.log(`AI 분석 완료: ${product.name}`);
+            } catch (error) {
+              console.error(`AI 분석 실패 ${product.name}:`, error);
+            }
+          });
         } catch (error: any) {
           errors.push(`행 ${i + 1}: ${error.message}`);
           errorCount++;

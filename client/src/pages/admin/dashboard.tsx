@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import AdminSidebar from "@/components/admin-sidebar";
 import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 import { 
   Download, 
   Bot, 
@@ -19,6 +21,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 export default function AdminDashboard() {
+  const { toast } = useToast();
+  
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['/api/stats/products'],
     queryFn: api.getProductStats,
@@ -54,11 +58,45 @@ export default function AdminDashboard() {
       });
       
       if (response.ok) {
-        // Refresh product data
-        window.location.reload();
+        const result = await response.json();
+        
+        // 성공 메시지 표시
+        toast({
+          title: "CSV 업로드 완료",
+          description: `${result.successCount}개 상품이 성공적으로 업로드되었습니다.`,
+          variant: "default",
+        });
+        
+        // 에러가 있는 경우 에러 정보도 표시
+        if (result.errorCount > 0) {
+          toast({
+            title: "일부 상품 업로드 실패",
+            description: `${result.errorCount}개 상품 업로드 실패. 에러: ${result.errors?.join(', ')}`,
+            variant: "destructive",
+          });
+        }
+        
+        // 데이터 새로고침 (페이지 리로드 없이)
+        queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/stats/products'] });
+        
+        // 파일 입력 초기화
+        event.target.value = '';
+      } else {
+        const error = await response.json();
+        toast({
+          title: "CSV 업로드 실패",
+          description: error.message || "알 수 없는 오류가 발생했습니다.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('CSV 업로드 실패:', error);
+      toast({
+        title: "CSV 업로드 실패",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive",
+      });
     }
   };
 
