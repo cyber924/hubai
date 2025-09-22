@@ -439,17 +439,29 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const offset = parseInt(req.query.offset as string) || 0;
       const source = req.query.source as string;
       const status = req.query.status as string;
+      const withCount = req.query.withCount === 'true';
 
-      let products;
       if (source) {
-        products = await storage.getProductsBySource(source);
+        // Source 필터는 아직 count 지원 안함 - 기존 방식 유지
+        const products = await storage.getProductsBySource(source);
+        res.json(withCount ? { products, total: products.length } : products);
       } else if (status) {
-        products = await storage.getProductsByStatus(status, limit, offset);
+        if (withCount) {
+          const result = await storage.getProductsByStatusWithCount(status, limit, offset);
+          res.json(result);
+        } else {
+          const products = await storage.getProductsByStatus(status, limit, offset);
+          res.json(products);
+        }
       } else {
-        products = await storage.getProducts(limit, offset);
+        if (withCount) {
+          const result = await storage.getProductsWithCount(limit, offset);
+          res.json(result);
+        } else {
+          const products = await storage.getProducts(limit, offset);
+          res.json(products);
+        }
       }
-
-      res.json(products);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to fetch products: " + error.message });
     }

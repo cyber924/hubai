@@ -45,9 +45,11 @@ export interface IStorage {
 
   // Product operations
   getProducts(limit?: number, offset?: number): Promise<Product[]>;
+  getProductsWithCount(limit?: number, offset?: number): Promise<{ products: Product[], total: number }>;
   getProduct(id: string): Promise<Product | undefined>;
   getProductsBySource(source: string): Promise<Product[]>;
   getProductsByStatus(status: string, limit?: number, offset?: number): Promise<Product[]>;
+  getProductsByStatusWithCount(status: string, limit?: number, offset?: number): Promise<{ products: Product[], total: number }>;
   createProduct(product: InsertProduct): Promise<Product>;
   updateProduct(id: string, updates: Partial<Product>): Promise<Product>;
   updateProductAiAnalysis(id: string, analysis: any): Promise<Product>;
@@ -255,6 +257,16 @@ export class MemStorage implements IStorage {
     return products;
   }
 
+  async getProductsWithCount(limit = 50, offset = 0): Promise<{ products: Product[], total: number }> {
+    const allProducts = Array.from(this.products.values())
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+    
+    const products = allProducts.slice(offset, offset + limit);
+    const total = allProducts.length;
+    
+    return { products, total };
+  }
+
   async getProduct(id: string): Promise<Product | undefined> {
     return this.products.get(id);
   }
@@ -268,6 +280,17 @@ export class MemStorage implements IStorage {
     const start = offset || 0;
     const end = limit ? start + limit : filtered.length;
     return filtered.slice(start, end);
+  }
+
+  async getProductsByStatusWithCount(status: string, limit = 50, offset = 0): Promise<{ products: Product[], total: number }> {
+    const filtered = Array.from(this.products.values())
+      .filter(product => product.status === status)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+    
+    const products = filtered.slice(offset, offset + limit);
+    const total = filtered.length;
+    
+    return { products, total };
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {

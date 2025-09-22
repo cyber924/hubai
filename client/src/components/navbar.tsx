@@ -21,7 +21,7 @@ export default function Navbar() {
   const navigation = [
     { name: "홈", href: "/" },
     { name: "AI 추천", href: "/ai-picks" },
-    { name: "상품 관리", href: "/products" },
+    { name: "내 상품", href: "/products" },
     { name: "내 쇼핑몰", href: "/my-store" },
     { name: "마켓 연동", href: "/market-sync" },
     { name: "요금제", href: "/pricing" },
