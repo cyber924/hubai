@@ -1307,6 +1307,97 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // Sample CSV download route
+  app.get("/api/admin/sample-csv", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      // 실제 데이터베이스 구조에 맞는 샘플 데이터
+      const sampleData = [
+        {
+          name: "스타일리시 블루 데님 재킷",
+          description: "봄, 가을에 착용하기 좋은 클래식한 데님 재킷입니다. 편안한 핏과 고급스러운 워싱으로 다양한 스타일링이 가능합니다.",
+          price: "89000",
+          originalPrice: "129000",
+          imageUrl: "https://example.com/images/denim-jacket-blue.jpg",
+          category: "아우터",
+          subcategory: "재킷",
+          brand: "Fashion Co",
+          source: "csv_upload",
+          sourceUrl: "",
+          sourceProductId: "SAMPLE001",
+          tags: "데님,재킷,캐주얼,블루",
+          season: "봄/가을",
+          gender: "unisex",
+          ageGroup: "20-40대"
+        },
+        {
+          name: "편안한 코튼 반팔 티셔츠",
+          description: "100% 순면 소재로 제작된 기본 반팔 티셔츠. 부드럽고 편안한 착용감으로 일상복으로 완벽합니다.",
+          price: "25000",
+          originalPrice: "35000",
+          imageUrl: "https://example.com/images/cotton-tshirt-white.jpg",
+          category: "상의",
+          subcategory: "티셔츠",
+          brand: "Comfort Brand",
+          source: "csv_upload",
+          sourceUrl: "",
+          sourceProductId: "SAMPLE002",
+          tags: "코튼,반팔,기본,화이트",
+          season: "여름",
+          gender: "unisex",
+          ageGroup: "전연령"
+        },
+        {
+          name: "트렌디 체크 패턴 스커트",
+          description: "모던한 체크 패턴의 미디 스커트. 오피스룩부터 데일리룩까지 활용도 높은 아이템입니다.",
+          price: "65000",
+          originalPrice: "85000",
+          imageUrl: "https://example.com/images/check-skirt-midi.jpg",
+          category: "하의",
+          subcategory: "스커트",
+          brand: "Trendy Style",
+          source: "csv_upload",
+          sourceUrl: "",
+          sourceProductId: "SAMPLE003",
+          tags: "체크,스커트,미디,오피스",
+          season: "사계절",
+          gender: "여성",
+          ageGroup: "20-30대"
+        }
+      ];
+
+      // CSV 헤더 생성
+      const headers = [
+        "name", "description", "price", "originalPrice", "imageUrl", 
+        "category", "subcategory", "brand", "source", "sourceUrl", 
+        "sourceProductId", "tags", "season", "gender", "ageGroup"
+      ];
+
+      // CSV 내용 생성
+      let csvContent = headers.join(",") + "\n";
+      
+      sampleData.forEach(item => {
+        const row = headers.map(header => {
+          const value = item[header as keyof typeof item] || "";
+          // CSV 값에 쉼표나 따옴표가 있으면 인용부호로 감싸기
+          return value.includes(",") || value.includes('"') 
+            ? `"${value.replace(/"/g, '""')}"` 
+            : value;
+        }).join(",");
+        csvContent += row + "\n";
+      });
+
+      // 응답 헤더 설정
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="stylehub-sample-products.csv"');
+      
+      // UTF-8 BOM 추가 (엑셀에서 한글 정상 표시를 위해)
+      res.write('\uFEFF');
+      res.send(csvContent);
+    } catch (error: any) {
+      res.status(500).json({ message: "샘플 CSV 생성 실패: " + error.message });
+    }
+  });
+
   // Statistics routes
   app.get("/api/stats/products", requireAuth, requireAdmin, async (req, res) => {
     try {
