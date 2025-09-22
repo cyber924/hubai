@@ -32,6 +32,17 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { eq, desc, sql, and } from 'drizzle-orm';
 
+// Price를 number로 변환하는 헬퍼 함수
+function normalizeProduct(product: any): Product {
+  return {
+    ...product,
+    price: typeof product.price === 'string' ? parseFloat(product.price) : product.price,
+    originalPrice: product.originalPrice ? 
+      (typeof product.originalPrice === 'string' ? parseFloat(product.originalPrice) : product.originalPrice) 
+      : null
+  };
+}
+
 export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
@@ -940,7 +951,8 @@ export class DatabaseStorage implements IStorage {
 
   // Product operations
   async getProducts(limit = 50, offset = 0): Promise<Product[]> {
-    return await this.db.select().from(products).orderBy(desc(products.createdAt)).limit(limit).offset(offset);
+    const result = await this.db.select().from(products).orderBy(desc(products.createdAt)).limit(limit).offset(offset);
+    return result.map(normalizeProduct);
   }
 
   async getProductsWithCount(limit = 50, offset = 0): Promise<{ products: Product[], total: number }> {
@@ -952,23 +964,25 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
     
-    return { products: productsResult, total };
+    return { products: productsResult.map(normalizeProduct), total };
   }
 
   async getProduct(id: string): Promise<Product | undefined> {
     const result = await this.db.select().from(products).where(eq(products.id, id));
-    return result[0];
+    return result[0] ? normalizeProduct(result[0]) : undefined;
   }
 
   async getProductsBySource(source: string): Promise<Product[]> {
-    return await this.db.select().from(products).where(eq(products.source, source));
+    const result = await this.db.select().from(products).where(eq(products.source, source));
+    return result.map(normalizeProduct);
   }
 
   async getProductsByStatus(status: string, limit?: number, offset?: number): Promise<Product[]> {
     const query = this.db.select().from(products).where(eq(products.status, status));
     if (limit) query.limit(limit);
     if (offset) query.offset(offset);
-    return await query;
+    const result = await query;
+    return result.map(normalizeProduct);
   }
 
   async getProductsByStatusWithCount(status: string, limit = 50, offset = 0): Promise<{ products: Product[], total: number }> {
@@ -1005,7 +1019,7 @@ export class DatabaseStorage implements IStorage {
       status: "pending",
       aiAnalysis: null
     }).returning();
-    return result[0];
+    return normalizeProduct(result[0]);
   }
 
   async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
@@ -1014,7 +1028,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(products.id, id))
       .returning();
     if (result.length === 0) throw new Error("Product not found");
-    return result[0];
+    return normalizeProduct(result[0]);
   }
 
   async updateProductAiAnalysis(id: string, analysis: any): Promise<Product> {
@@ -1030,7 +1044,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(products.id, id))
       .returning();
     if (result.length === 0) throw new Error("Product not found");
-    return result[0];
+    return normalizeProduct(result[0]);
   }
 
   async deleteProduct(id: string): Promise<void> {
