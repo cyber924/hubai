@@ -22,10 +22,20 @@ export class CSVParsingEngine {
   private static readonly DEFAULT_DELIMITERS = [',', '\t', ';', '|'];
   private static readonly DEFAULT_ENCODINGS = ['UTF-8', 'UTF-16', 'EUC-KR', 'CP949'];
   
+  // Vercel 최적화: 파일 크기 제한 (10MB)
+  private static readonly MAX_FILE_SIZE = 10 * 1024 * 1024;
+  // Vercel 최적화: 최대 처리 행 수 (5000행)
+  private static readonly MAX_ROWS = 5000;
+  
   /**
    * Buffer에서 CSV 파일을 분석하여 구조를 파악합니다 (인코딩 감지 포함)
    */
   static analyzeCSVFromBuffer(buffer: Buffer, options: CSVAnalysisOptions = {}): CSVParseResult {
+    // Vercel 최적화: 파일 크기 검증
+    if (buffer.length > this.MAX_FILE_SIZE) {
+      throw new Error(`파일 크기가 너무 큽니다. 최대 ${this.MAX_FILE_SIZE / 1024 / 1024}MB까지 지원됩니다.`);
+    }
+    
     const { encoding, content } = this.detectEncodingFromBuffer(buffer);
     return this.analyzeCSV(content, { ...options, detectedEncoding: encoding });
   }
@@ -65,6 +75,11 @@ export class CSVParsingEngine {
     
     if (rows.length === 0) {
       throw new Error('유효한 데이터 행이 없습니다');
+    }
+    
+    // Vercel 최적화: 행 수 제한
+    if (rows.length > this.MAX_ROWS) {
+      throw new Error(`행 수가 너무 많습니다. 최대 ${this.MAX_ROWS}행까지 지원됩니다. (현재: ${rows.length}행)`);
     }
     
     // 5. 헤더 추출

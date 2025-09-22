@@ -45,7 +45,12 @@ export async function analyzeProduct(product: {
 출처: ${product.source}
 `;
 
-    const response = await ai.models.generateContent({
+    // Vercel 최적화: 빠른 응답을 위한 타임아웃 설정
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('AI 분석 요청 타임아웃 (25초)')), 25000);
+    });
+    
+    const analysisPromise = ai.models.generateContent({
       model: "gemini-2.5-pro",
       config: {
         systemInstruction: systemPrompt,
@@ -69,6 +74,8 @@ export async function analyzeProduct(product: {
       },
       contents: productInfo
     });
+    
+    const response = await Promise.race([analysisPromise, timeoutPromise]);
 
     const rawJson = response.text;
     if (rawJson) {
@@ -117,7 +124,12 @@ export async function generateTrendReport(products: any[]): Promise<{
       tags: p.tags
     }));
 
-    const response = await ai.models.generateContent({
+    // Vercel 최적화: 트렌드 리포트 생성 타임아웃
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('트렌드 리포트 생성 타임아웃 (20초)')), 20000);
+    });
+    
+    const reportPromise = ai.models.generateContent({
       model: "gemini-2.5-pro",
       config: {
         systemInstruction: systemPrompt,
@@ -125,6 +137,8 @@ export async function generateTrendReport(products: any[]): Promise<{
       },
       contents: `상품 데이터: ${JSON.stringify(productData.slice(0, 100))}`
     });
+    
+    const response = await Promise.race([reportPromise, timeoutPromise]);
 
     const rawJson = response.text;
     if (rawJson) {

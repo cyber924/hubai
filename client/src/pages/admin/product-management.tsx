@@ -60,7 +60,7 @@ export default function ProductManagement() {
   const { data: registrationJobs } = useQuery({
     queryKey: ['/api/registration/jobs'],
     queryFn: () => api.getRegistrationJobs(10),
-    refetchInterval: activeJobIds.size > 0 ? 2000 : false, // Poll every 2 seconds if there are active jobs
+    refetchInterval: activeJobIds.size > 0 ? 5000 : false, // Poll every 5 seconds if there are active jobs (Vercel optimized)
     refetchOnWindowFocus: false,
   });
 

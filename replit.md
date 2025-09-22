@@ -14,24 +14,24 @@ Preferred communication style: Simple, everyday language.
 - **React + TypeScript**: Modern single-page application built with React 18 and TypeScript for type safety
 - **Wouter**: Lightweight client-side routing instead of React Router for minimal bundle size
 - **Tailwind CSS + shadcn/ui**: Utility-first CSS framework with pre-built component library using Radix UI primitives
-- **TanStack Query**: Server state management for data fetching, caching, and synchronization
+- **TanStack Query**: Server state management for data fetching, caching, and synchronization (optimized for Vercel with 5s polling)
 - **Vite**: Modern build tool for fast development and optimized production builds
 
 ### Backend Architecture  
-- **Express.js**: RESTful API server with session-based authentication
+- **Express.js**: RESTful API server with session-based authentication (Vercel-optimized)
 - **TypeScript**: Full-stack type safety with shared schemas between client and server
 - **Session Management**: PostgreSQL-backed sessions using connect-pg-simple for persistent login state
 - **Password Security**: bcrypt hashing for secure password storage
 
 ### Database & ORM
-- **PostgreSQL**: Primary database with Neon serverless hosting
+- **PostgreSQL**: Primary database with Neon serverless hosting (Vercel-compatible)
 - **Drizzle ORM**: Type-safe SQL query builder with schema migrations
 - **Shared Schema**: Centralized type definitions in `/shared/schema.ts` for frontend/backend consistency
 
-### AI & Automation Services
-- **Google Gemini AI**: Product analysis for categorization, pricing recommendations, and trend identification
-- **Web Scraping Engine**: Automated product collection from Korean fashion platforms with configurable scheduling
-- **Product Processing Pipeline**: Multi-stage workflow (collect → analyze → register → sync) with status tracking
+### AI & Automation Services (Vercel Optimized)
+- **Google Gemini AI**: Product analysis for categorization, pricing recommendations, and trend identification (25s timeout)
+- **CSV Upload System**: Replaced auto-scraping with CSV upload for serverless compatibility (10MB/5000 rows limit)
+- **Product Processing Pipeline**: Streamlined workflow (upload → analyze → register → sync) with status tracking
 
 ### Authentication & Payment
 - **Session-based Auth**: Secure session management with PostgreSQL storage
