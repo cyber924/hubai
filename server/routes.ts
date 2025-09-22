@@ -1829,10 +1829,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // Store state in session for verification
       (req as any).session.cafe24_oauth_state = state;
       
-      // Use configured redirect URI
-      const redirectUri = process.env.CAFE24_REDIRECT_URI;
+      // Use configured redirect URI or generate dynamically
+      let redirectUri = process.env.CAFE24_REDIRECT_URI;
       if (!redirectUri) {
-        return res.status(500).json({ message: "CAFE24_REDIRECT_URI 설정이 필요합니다." });
+        // Generate redirect URI dynamically from request
+        redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+        console.log('[CAFE24 AUTH] Using dynamic redirect URI:', redirectUri);
+      } else {
+        console.log('[CAFE24 AUTH] Using configured redirect URI:', redirectUri);
       }
       
       const authUrl = `https://${mallId}.cafe24api.com/api/v2/oauth/authorize?` +
@@ -1841,6 +1845,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
         `state=${state}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `scope=${encodeURIComponent('mall.read_product mall.write_product')}`;
+
+      console.log('[CAFE24 AUTH] Generated auth URL with redirect URI:', redirectUri);
 
       res.json({ authUrl });
     } catch (error: any) {
@@ -1909,13 +1915,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
       
       console.log('[CAFE24 CALLBACK] Using mallId from state:', mallId);
 
-      // Use configured redirect URI
-      const redirectUri = process.env.CAFE24_REDIRECT_URI;
+      // Use configured redirect URI or generate dynamically
+      let redirectUri = process.env.CAFE24_REDIRECT_URI;
       if (!redirectUri) {
-        console.log('[CAFE24 CALLBACK] Missing CAFE24_REDIRECT_URI');
-        // Clean up session state on error
-        delete (req as any).session.cafe24_oauth_state;
-        return res.redirect('/market-sync?error=config_missing');
+        // Generate redirect URI dynamically from request
+        redirectUri = `${req.protocol}://${req.get('host')}/api/marketplace/cafe24/callback`;
+        console.log('[CAFE24 CALLBACK] Using dynamic redirect URI:', redirectUri);
+      } else {
+        console.log('[CAFE24 CALLBACK] Using configured redirect URI:', redirectUri);
       }
 
       // Exchange code for access token
@@ -1979,9 +1986,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.log('[CAFE24 CALLBACK] New connection created for user:', stateData.userId);
       }
 
-      // Redirect back to products page with success message
-      console.log('[CAFE24 CALLBACK] Redirecting to /products?cafe24_connected=true');
-      res.redirect('/products?cafe24_connected=true');
+      // Redirect back to market-sync page with success message
+      console.log('[CAFE24 CALLBACK] Redirecting to /market-sync?cafe24_connected=true');
+      res.redirect('/market-sync?cafe24_connected=true');
     } catch (error: any) {
       console.error("Cafe24 OAuth callback error:", error);
       // Clean up session state on error

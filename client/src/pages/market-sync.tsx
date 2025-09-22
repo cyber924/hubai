@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,21 @@ export default function MarketSync() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 카페24 연결 성공 메시지 처리
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('cafe24_connected') === 'true') {
+      toast({
+        title: "카페24 연결 완료",
+        description: "카페24가 성공적으로 연결되었습니다. 이제 상품을 등록할 수 있습니다.",
+      });
+      // 연결 상태 새로고침
+      queryClient.invalidateQueries({ queryKey: ['/api/marketplace/connections'] });
+      // URL에서 파라미터 제거
+      window.history.replaceState({}, '', '/market-sync');
+    }
+  }, [toast, queryClient]);
 
   // 스타일허브용 컬럼 옵션들
   const availableColumns = [

@@ -23,18 +23,6 @@ export default function Products() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 50;
 
-  // 카페24 연결 성공 메시지 처리
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('cafe24_connected') === 'true') {
-      toast({
-        title: "카페24 연결 완료",
-        description: "카페24가 성공적으로 연결되었습니다. 이제 상품을 등록할 수 있습니다.",
-      });
-      // URL에서 파라미터 제거
-      window.history.replaceState({}, '', '/products');
-    }
-  }, [toast]);
 
   // Fetch products with count
   const { data, isLoading, error } = useQuery<{ products: Product[], total: number }>({
