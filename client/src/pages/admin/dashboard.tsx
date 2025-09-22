@@ -62,6 +62,28 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleSampleDownload = async () => {
+    try {
+      const response = await fetch('/api/admin/sample-csv', {
+        method: 'GET',
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'stylehub-sample-products.csv';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('샘플 CSV 다운로드 실패:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-muted/20">
       <div className="flex">
@@ -191,15 +213,27 @@ export default function AdminDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="korean-text">상품 업로드</CardTitle>
-                  <Button 
-                    size="sm"
-                    onClick={() => document.getElementById('csv-upload')?.click()}
-                    className="korean-text"
-                    data-testid="button-upload-csv"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    CSV 업로드
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSampleDownload}
+                      className="korean-text"
+                      data-testid="button-download-sample"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      샘플 다운로드
+                    </Button>
+                    <Button 
+                      size="sm"
+                      onClick={() => document.getElementById('csv-upload')?.click()}
+                      className="korean-text"
+                      data-testid="button-upload-csv"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      CSV 업로드
+                    </Button>
+                  </div>
                   <input
                     id="csv-upload"
                     type="file"
