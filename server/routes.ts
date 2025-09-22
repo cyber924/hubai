@@ -15,6 +15,78 @@ import { insertUserSchema, insertProductSchema, insertMarketplaceTemplateSchema,
 import { z } from "zod";
 import * as crypto from 'crypto';
 
+// AI 분석 큐와 동시성 제어
+interface AIAnalysisJob {
+  productId: string;
+  productData: {
+    name: string;
+    description: string;
+    price: string;
+    imageUrl?: string;
+    source: string;
+  };
+}
+
+const aiAnalysisQueue: AIAnalysisJob[] = [];
+let activeAnalyses = 0;
+const MAX_CONCURRENT_ANALYSES = 3;
+
+// AI 분석 처리 함수 (재시도 로직 포함)
+async function processAIAnalysis(job: AIAnalysisJob) {
+  const maxRetries = 2;
+  let retryCount = 0;
+  
+  while (retryCount <= maxRetries) {
+    try {
+      const { analyzeProduct } = await import('./services/gemini');
+      const analysis = await analyzeProduct(job.productData);
+      
+      await storage.updateProductAiAnalysis(job.productId, analysis);
+      console.log(`AI 분석 완료: ${job.productData.name} (시도: ${retryCount + 1})`);
+      return; // 성공시 종료
+      
+    } catch (error: any) {
+      retryCount++;
+      console.error(`AI 분석 실패 ${job.productData.name} (시도 ${retryCount}/${maxRetries + 1}):`, error);
+      
+      // 재시도 가능한 에러인지 확인 (429, 503, ETIMEDOUT)
+      const isRetryableError = error.message?.includes('429') || 
+                               error.message?.includes('503') || 
+                               error.message?.includes('ETIMEDOUT') ||
+                               error.message?.includes('timeout');
+      
+      if (retryCount <= maxRetries && isRetryableError) {
+        // 지수백오프 + jitter
+        const baseDelay = Math.pow(2, retryCount) * 1000;
+        const jitter = Math.random() * 1000;
+        const delay = baseDelay + jitter;
+        console.log(`${Math.round(delay)}ms 후 재시도...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`AI 분석 최종 실패: ${job.productData.name} - ${retryCount > maxRetries ? '모든 재시도 소진' : '재시도 불가능한 에러'}`);
+        return;
+      }
+    }
+  }
+}
+
+// AI 분석 큐 처리기
+async function processAnalysisQueue() {
+  while (aiAnalysisQueue.length > 0 && activeAnalyses < MAX_CONCURRENT_ANALYSES) {
+    const job = aiAnalysisQueue.shift();
+    if (job) {
+      activeAnalyses++;
+      processAIAnalysis(job).finally(() => {
+        activeAnalyses--;
+        // 큐에 더 작업이 있으면 계속 처리
+        if (aiAnalysisQueue.length > 0) {
+          setImmediate(processAnalysisQueue);
+        }
+      });
+    }
+  }
+}
+
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
 }
@@ -1290,6 +1362,18 @@ export async function registerRoutes(app: Express): Promise<Express> {
       let errorCount = 0;
       const errors: string[] = [];
 
+      // 기존 상품들을 한 번만 조회하여 중복 체크용 맵 생성
+      const existingProducts = await storage.getProducts();
+      const existingByKey = new Map();
+      existingProducts.forEach(p => {
+        if (p.sourceProductId && p.source) {
+          existingByKey.set(`${p.source}:${p.sourceProductId}`, p);
+        }
+        if (p.sourceUrl) {
+          existingByKey.set(`url:${p.sourceUrl}`, p);
+        }
+      });
+
       // CSV 데이터 파싱 및 DB 저장
       for (let i = 1; i < lines.length; i++) {
         try {
@@ -1307,45 +1391,70 @@ export async function registerRoutes(app: Express): Promise<Express> {
             continue;
           }
 
-          // 상품 생성
-          const product = await storage.createProduct({
-            name: productData.name,
-            description: productData.description || '',
-            price: productData.price,
-            originalPrice: productData.originalPrice || productData.price,
-            imageUrl: productData.imageUrl || '',
-            category: productData.category || '기타',
-            brand: productData.brand || '',
-            source: productData.source || 'csv_upload',
-            sourceUrl: productData.sourceUrl || '',
-            sourceProductId: productData.sourceProductId || ''
-          });
+          // 데이터 타입 변환 및 정리 (스키마 호환성 확보)
+          const processedData = {
+            name: productData.name.trim(),
+            description: productData.description?.trim() || '',
+            price: parseFloat(productData.price) || 0, // number로 변환
+            originalPrice: parseFloat(productData.originalPrice || productData.price) || 0, // number로 변환
+            imageUrl: productData.imageUrl?.trim() || '',
+            category: productData.category?.trim() || '기타',
+            subcategory: productData.subcategory?.trim() || '',
+            brand: productData.brand?.trim() || '',
+            source: productData.source?.trim() || 'csv_upload',
+            sourceUrl: productData.sourceUrl?.trim() || '',
+            sourceProductId: productData.sourceProductId?.trim() || '',
+            // tags 필드: 쉼표로 구분된 문자열을 배열로 변환
+            tags: productData.tags ? 
+              productData.tags.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0) :
+              [],
+            season: productData.season?.trim() || '',
+            gender: productData.gender?.trim() || '',
+            ageGroup: productData.ageGroup?.trim() || ''
+          };
+
+          // 안전한 중복 검사 (source + sourceProductId 조합으로)
+          const duplicateKey = processedData.sourceProductId ? 
+            `${processedData.source}:${processedData.sourceProductId}` :
+            processedData.sourceUrl ? `url:${processedData.sourceUrl}` : null;
+          
+          const existingProduct = duplicateKey ? existingByKey.get(duplicateKey) : null;
+
+          let product;
+          if (existingProduct) {
+            // 기존 상품 업데이트
+            product = await storage.updateProduct(existingProduct.id, processedData);
+            console.log(`기존 상품 업데이트: ${product.name} (ID: ${product.id})`);
+          } else {
+            // 새 상품 생성
+            product = await storage.createProduct(processedData);
+            console.log(`새 상품 생성: ${product.name} (ID: ${product.id})`);
+          }
           
           products.push(product);
           successCount++;
 
-          // AI 분석 시작 (백그라운드에서 실행)
-          setImmediate(async () => {
-            try {
-              const { analyzeProduct } = await import('./services/gemini');
-              const analysis = await analyzeProduct({
-                name: product.name,
-                description: product.description,
-                price: product.price,
-                imageUrl: product.imageUrl,
-                source: product.source
-              });
-              
-              await storage.updateProductAiAnalysis(product.id, analysis);
-              console.log(`AI 분석 완료: ${product.name}`);
-            } catch (error) {
-              console.error(`AI 분석 실패 ${product.name}:`, error);
+          // AI 분석 큐에 추가 (동시성 제어)
+          aiAnalysisQueue.push({
+            productId: product.id,
+            productData: {
+              name: product.name,
+              description: product.description,
+              price: product.price.toString(),
+              imageUrl: product.imageUrl,
+              source: product.source
             }
           });
         } catch (error: any) {
           errors.push(`행 ${i + 1}: ${error.message}`);
           errorCount++;
         }
+      }
+
+      // AI 분석 큐 처리 시작
+      if (aiAnalysisQueue.length > 0) {
+        console.log(`AI 분석 큐에 ${aiAnalysisQueue.length}개 작업 추가됨`);
+        setImmediate(processAnalysisQueue);
       }
 
       res.json({
