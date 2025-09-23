@@ -1,17 +1,7 @@
 {
-  "version": 2,
-  "framework": null,
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist/public",
-  "installCommand": "npm install",
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 30
-    }
-  },
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/(.*)",
       "destination": "/api"
     }
   ]
