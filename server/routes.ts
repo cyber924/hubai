@@ -1187,6 +1187,38 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // 전체 상품 삭제 API
+  app.delete("/api/admin/products", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const deletedCount = await storage.deleteAllProducts();
+      res.json({ 
+        message: "All products deleted successfully",
+        deletedCount 
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete all products: " + error.message });
+    }
+  });
+
+  // 선택된 상품들 삭제 API
+  app.delete("/api/admin/products/selected", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { productIds } = req.body;
+      
+      if (!Array.isArray(productIds) || productIds.length === 0) {
+        return res.status(400).json({ message: "Product IDs array is required" });
+      }
+      
+      const deletedCount = await storage.deleteSelectedProducts(productIds);
+      res.json({ 
+        message: `${deletedCount} products deleted successfully`,
+        deletedCount 
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete selected products: " + error.message });
+    }
+  });
+
   // CSV Upload route
   app.post("/api/products/upload-csv", requireAuth, requireAdmin, upload.single('csvFile'), async (req, res) => {
     try {

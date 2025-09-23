@@ -30,7 +30,7 @@ type OptimizationSuggestion = {
 import { randomUUID } from "crypto";
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { eq, desc, sql, and } from 'drizzle-orm';
+import { eq, desc, sql, and, inArray } from 'drizzle-orm';
 
 // Price를 number로 변환하는 헬퍼 함수
 function normalizeProduct(product: any): Product {
@@ -1049,6 +1049,19 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProduct(id: string): Promise<void> {
     await this.db.delete(products).where(eq(products.id, id));
+  }
+
+  async deleteAllProducts(): Promise<number> {
+    const deletedResult = await this.db.delete(products).returning({ id: products.id });
+    return deletedResult.length;
+  }
+
+  async deleteSelectedProducts(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const deletedResult = await this.db.delete(products)
+      .where(inArray(products.id, ids))
+      .returning({ id: products.id });
+    return deletedResult.length;
   }
 
   // Marketplace sync operations
