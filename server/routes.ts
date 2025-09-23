@@ -11,7 +11,7 @@ import fs from "fs";
 import { promises as fsPromises } from "fs";
 import { storage } from "./storage";
 import { generateTrendReport } from "./services/gemini";
-import { insertUserSchema, insertProductSchema, insertMarketplaceTemplateSchema, insertFieldMappingSchema, insertExportProfileSchema } from "@shared/schema";
+import { insertUserSchema, insertProductSchema, insertMarketplaceTemplateSchema, insertFieldMappingSchema, insertExportProfileSchema } from "../shared/schema";
 import { z } from "zod";
 import * as crypto from 'crypto';
 
@@ -87,12 +87,19 @@ async function processAnalysisQueue() {
   }
 }
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+// Lazy Stripe initialization to prevent cold start failures
+let stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+    }
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2023-10-16",
+    });
+  }
+  return stripe;
 }
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2025-08-27.basil",
-});
 
 // Authentication middleware
 const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
@@ -1435,8 +1442,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
           const processedData = {
             name: productData.name.trim(),
             description: productData.description?.trim() || '',
-            price: parseFloat(productData.price) || 0, // number로 변환
-            originalPrice: parseFloat(productData.originalPrice || productData.price) || 0, // number로 변환
+            price: (parseFloat(productData.price) || 0).toString(), // string으로 변환
+            originalPrice: (parseFloat(productData.originalPrice || productData.price) || 0).toString(), // string으로 변환
             imageUrl: productData.imageUrl?.trim() || '',
             category: productData.category?.trim() || '기타',
             subcategory: productData.subcategory?.trim() || '',
@@ -1479,9 +1486,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
             productId: product.id,
             productData: {
               name: product.name,
-              description: product.description,
+              description: product.description || '',
               price: product.price.toString(),
-              imageUrl: product.imageUrl,
+              imageUrl: product.imageUrl || '',
               source: product.source
             }
           });
@@ -1752,12 +1759,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
     try {
       // For demo purposes, create a mock subscription
       // In real implementation, this would use authenticated user
-      const customer = await stripe.customers.create({
+      const customer = await getStripe().customers.create({
         email: "demo@stylehub.com",
         name: "Demo User",
       });
 
-      const subscription = await stripe.subscriptions.create({
+      const subscription = await getStripe().subscriptions.create({
         customer: customer.id,
         items: [{
           price: process.env.STRIPE_PRICE_ID || "price_demo",

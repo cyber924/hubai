@@ -1,7 +1,7 @@
 import express from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
-import { registerRoutes } from "../server/routes.js";
+import { registerRoutes } from "../server/routes";
 
 const app = express();
 
@@ -11,14 +11,21 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session middleware with PostgreSQL store
+// Session middleware with PostgreSQL store (with fallback)
 const PgSession = connectPgSimple(session);
 
+// Require DATABASE_URL for persistent sessions in serverless
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required for persistent sessions in production');
+}
+
+const sessionStore = new PgSession({
+  conString: process.env.DATABASE_URL,
+  tableName: 'session'
+});
+
 app.use(session({
-  store: new PgSession({
-    conString: process.env.DATABASE_URL,
-    tableName: 'session'
-  }),
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-this-in-production',
   resave: false,
   saveUninitialized: false,
