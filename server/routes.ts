@@ -1203,12 +1203,20 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // 선택된 상품들 삭제 API
   app.delete("/api/admin/products/selected", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { productIds } = req.body;
+      // Zod 스키마로 payload 검증
+      const deleteSelectedSchema = z.object({
+        productIds: z.array(z.string().uuid()).min(1).max(500)
+      });
       
-      if (!Array.isArray(productIds) || productIds.length === 0) {
-        return res.status(400).json({ message: "Product IDs array is required" });
+      const validation = deleteSelectedSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid request data", 
+          errors: validation.error.flatten().fieldErrors 
+        });
       }
       
+      const { productIds } = validation.data;
       const deletedCount = await storage.deleteSelectedProducts(productIds);
       res.json({ 
         message: `${deletedCount} products deleted successfully`,

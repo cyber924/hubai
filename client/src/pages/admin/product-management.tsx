@@ -25,7 +25,8 @@ import {
   Square,
   CheckSquare,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from "lucide-react";
 import type { Product } from "@shared/schema";
 
@@ -149,6 +150,126 @@ export default function ProductManagement() {
   const handleEditProduct = (product: Product) => {
     setSelectedProduct(product);
     setIsEditModalOpen(true);
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        toast({
+          title: "삭제 완료",
+          description: "상품이 성공적으로 삭제되었습니다.",
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+        refetch();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "삭제 실패",
+          description: error.message || "상품 삭제에 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "삭제 실패",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!confirm("정말로 모든 상품을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/admin/products', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast({
+          title: "전체 삭제 완료",
+          description: `${result.deletedCount}개 상품이 성공적으로 삭제되었습니다.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+        refetch();
+        setSelectedProductIds(new Set());
+      } else {
+        const error = await response.json();
+        toast({
+          title: "전체 삭제 실패",
+          description: error.message || "전체 상품 삭제에 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "전체 삭제 실패",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedProductIds.size === 0) {
+      toast({
+        title: "선택된 상품이 없습니다",
+        description: "삭제할 상품을 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!confirm(`선택한 ${selectedProductIds.size}개 상품을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/admin/products/selected', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          productIds: Array.from(selectedProductIds)
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast({
+          title: "선택 삭제 완료",
+          description: `${result.deletedCount}개 상품이 성공적으로 삭제되었습니다.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+        refetch();
+        setSelectedProductIds(new Set());
+      } else {
+        const error = await response.json();
+        toast({
+          title: "선택 삭제 실패",
+          description: error.message || "선택된 상품 삭제에 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "선택 삭제 실패",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCloseDetailModal = () => {
@@ -723,6 +844,17 @@ export default function ProductManagement() {
                             )}
                             선택 등록
                           </Button>
+                          
+                          <Button
+                            variant="destructive"
+                            onClick={handleDeleteSelected}
+                            disabled={isRegistering || selectedProductIds.size === 0}
+                            className="korean-text"
+                            data-testid="button-delete-selected"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            선택 삭제
+                          </Button>
                         </>
                       )}
                       
@@ -739,6 +871,17 @@ export default function ProductManagement() {
                           <Upload className="mr-2 h-4 w-4" />
                         )}
                         전체 등록 ({analyzedProducts.length}개)
+                      </Button>
+                      
+                      <Button
+                        variant="destructive"
+                        onClick={handleDeleteAll}
+                        disabled={isRegistering || !products || products.length === 0}
+                        className="korean-text"
+                        data-testid="button-delete-all"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        전체 삭제 ({products?.length || 0}개)
                       </Button>
                     </>
                   )}
@@ -865,6 +1008,16 @@ export default function ProductManagement() {
                           data-testid={`button-edit-${product.id}`}
                         >
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleDeleteProduct(product.id)}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          data-testid={`button-delete-${product.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
